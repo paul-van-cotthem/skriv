@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.7*
+*Agent prompt v1.8*
 
 ---
 
@@ -510,11 +510,15 @@ class EditorViewModel(
     val userPreferences: StateFlow<UserPrefsData>
     val events: SharedFlow<UiEvent>
     val pendingAction: StateFlow<PendingAction?>
-    val createDocumentRequest: SharedFlow<String>  // suggested filename
+    val createDocumentRequest: SharedFlow<String>    // suggested filename
+    val restoredScrollOffset: SharedFlow<Int>        // one-shot: scroll to this offset after file load
 
     // canUndo/canRedo as StateFlow so Compose recomposes correctly
     val canUndo: StateFlow<Boolean>  // = snapshotFlow { textFieldState.undoState.canUndo }.stateIn(...)
     val canRedo: StateFlow<Boolean>  // = snapshotFlow { textFieldState.undoState.canRedo }.stateIn(...)
+
+    // Word count, debounced 300ms
+    val wordCount: StateFlow<Int>  // snapshotFlow { text }.debounce(300).map { count words }.stateIn(...)
 
     fun loadFile(uri: Uri)
     fun onCreateDocumentResult(uri: Uri)
@@ -526,6 +530,11 @@ class EditorViewModel(
     fun requestNew()      // checks unsaved state; sets pendingAction = NEW or creates document
     fun requestBack()     // checks unsaved state; sets pendingAction = BACK or emits NavigateBack
     fun confirmPendingAction(save: Boolean)
+    // confirmPendingAction behaviour:
+    //   save=false → clear textFieldState (if NEW) or emit NavigateBack (if BACK); clear pendingAction
+    //   save=true, uri != null → save inline; then execute action; clear pendingAction
+    //   save=true, uri == null → store pendingAction in _savedPendingAction; call save()
+    //     → onCreateDocumentResult() completes the save, then checks _savedPendingAction and executes it
     fun cancelPendingAction()
 
     // Silent auto-save on background. No-op when uri is null (new unsaved document).
@@ -679,7 +688,16 @@ val SettingsViewModelFactory = viewModelFactory {
 
 ## File picker launchers
 
-**Opening a file:**
+**RecentsScreen** — opens a file then navigates to the editor:
+```kotlin
+val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    uri?.let { navController.navigate(EditorRoute(it.toString())) }
+}
+// launched from "Open" button
+openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
+```
+
+**EditorScreen** — opens a different file into the same editor instance:
 ```kotlin
 val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
     uri?.let { viewModel.loadFile(it) }
@@ -991,7 +1009,9 @@ openLauncher fires → uri received
           - isReadOnly = !fileRepository.hasWritePermission(uri)
           - isLoading = false
        d. val entry = recentsRepository.getEntry(uri)
-          restore entry.cursorPosition and entry.scrollOffset
+          Set cursor: textFieldState.edit { selectCharsIn(TextRange(entry.cursorPosition)) }
+          Scroll: expose restoredScrollOffset as a one-shot SharedFlow<Int>; EditorScreen
+          collects it with LaunchedEffect and calls scrollState.scrollTo(offset)
     4. Failure: UiEvent.ErrorDialog (encoding) or UiEvent.ErrorDialog (too large)
 ```
 
