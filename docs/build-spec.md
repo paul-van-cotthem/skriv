@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.1*
+*Agent prompt v1.2*
 
 ---
 
@@ -7,7 +7,7 @@
 
 An Android plain text file editor called **Skriv**. It opens, edits, and saves `.txt` and `.md` files stored anywhere on the Android file system or in cloud storage. It does not store files internally, render Markdown, or require an account. Every file the user edits remains a real file in the real file system.
 
-The app is written in **Kotlin + Jetpack Compose**. Minimum SDK: **API 29 (Android 10)**. Target SDK: **API 35**. Use **Material 3** components and theming throughout.
+The app is written in **Kotlin 2.x + Jetpack Compose**. Minimum SDK: **API 29 (Android 10)**. Target SDK: **API 35**. Use **Material 3** components and theming throughout.
 
 ---
 
@@ -22,14 +22,95 @@ The app is written in **Kotlin + Jetpack Compose**. Minimum SDK: **API 29 (Andro
 
 ---
 
+## Gradle and Kotlin configuration
+
+### Kotlin version and Compose compiler
+
+Use **Kotlin 2.x**. With Kotlin 2.0+, the Compose compiler is delivered as a standalone Gradle plugin — there is no separate `kotlinCompilerExtensionVersion` to manage. The old `composeOptions` block in `build.gradle` is gone.
+
+In the root-level `build.gradle.kts` plugins block:
+
+```kotlin
+plugins {
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.compose) apply false   // Compose compiler plugin
+    alias(libs.plugins.ksp) apply false
+}
+```
+
+In `app/build.gradle.kts`:
+
+```kotlin
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)   // replaces composeOptions block entirely
+    alias(libs.plugins.ksp)
+}
+
+android {
+    compileSdk = 35
+    defaultConfig { minSdk = 29; targetSdk = 35 }
+    buildFeatures { compose = true }
+    // No composeOptions block needed with Kotlin 2.x
+}
+```
+
+### Gradle Version Catalog (`libs.versions.toml`)
+
+Android Studio generates projects with a version catalog by default. Use it — do not hardcode dependency strings in build files.
+
+```toml
+[versions]
+kotlin = "2.1.0"
+agp = "8.7.0"
+compose-bom = "2024.09.00"
+navigation = "2.8.0"
+lifecycle = "2.8.7"
+room = "2.6.1"
+datastore = "1.1.1"
+coroutines = "1.9.0"
+core-ktx = "1.15.0"
+activity = "1.9.3"
+window = "1.3.0"
+ksp = "2.1.0-1.0.29"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+[libraries]
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
+# ... individual compose libraries reference the BOM, no version needed
+navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
+lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
+window = { group = "androidx.window", name = "window", version.ref = "window" }
+```
+
+---
+
 ## Project structure
 
 ```
 com.skriv.app
 ├── MainActivity.kt                  // single Activity, hosts NavHost
 ├── navigation/
-│   └── SkrivNavGraph.kt             // NavHost with three destinations
+│   └── SkrivNavGraph.kt             // NavHost, type-safe route definitions
 ├── ui/
+│   ├── theme/
+│   │   └── SkrivTheme.kt            // MaterialTheme wrapper, dynamic color
 │   ├── editor/
 │   │   ├── EditorScreen.kt          // full-screen editor Composable
 │   │   ├── EditorViewModel.kt       // editor state and file operations
@@ -64,6 +145,20 @@ com.skriv.app
 
 The app has **three screens** and a **single Activity**.
 
+### Type-safe route definitions
+
+Define routes in `SkrivNavGraph.kt` using `@Serializable` (nav-compose 2.8+). No string-based routes.
+
+```kotlin
+@Serializable object RecentsRoute
+@Serializable data class EditorRoute(val uriString: String?)  // null = new document
+@Serializable object SettingsRoute
+```
+
+Navigate using `navController.navigate(EditorRoute(uri.toString()))`. Retrieve arguments with `navBackStackEntry.toRoute<EditorRoute>()`.
+
+Apply `kotlin.plugin.serialization` Gradle plugin and add `kotlinx-serialization-json` to enable `@Serializable` on route classes.
+
 ### Navigation graph
 
 ```
@@ -79,16 +174,53 @@ LauncherIcon / External Intent
 ```
 
 - `RecentsScreen` is **always** the start destination, regardless of how the app is launched.
-- When launched via an external intent (tapping a `.txt` or `.md` file in Files, Drive, etc.), the app starts at `RecentsScreen` and immediately navigates forward to `EditorScreen` with the incoming URI. This ensures the back stack is always rooted at `RecentsScreen` and back navigation is consistent.
+- When launched via an external intent (tapping a `.txt` or `.md` file in Files, Drive, etc.), the app starts at `RecentsScreen` and immediately navigates forward to `EditorScreen` with the incoming URI, so the back stack is always rooted at `RecentsScreen`.
 - `SettingsScreen` is pushed onto the back stack from `EditorScreen` via the overflow menu.
-- Navigation uses `NavHost` with `composable()` destinations. Pass `Uri` as a string argument to `EditorScreen`.
+- Navigation Compose 2.8+ handles predictive back animations between destinations automatically — no manual setup required for nav transitions.
 
 ### Back behaviour
 
 - From `EditorScreen` with no unsaved changes: navigate back to `RecentsScreen`.
-- From `EditorScreen` with unsaved changes: intercept back with `BackHandler`, show an `AlertDialog` ("Save" / "Discard" / "Cancel"). "Save" writes the file then navigates; "Discard" navigates without saving; "Cancel" dismisses the dialog and keeps the user in the editor.
+- From `EditorScreen` with unsaved changes: use `BackHandler(enabled = !documentState.isSaved)` to intercept, then show an `AlertDialog` ("Save" / "Discard" / "Cancel"). "Save" writes the file then navigates; "Discard" navigates without saving; "Cancel" dismisses the dialog.
 - From `SettingsScreen`: pop back to `EditorScreen`.
-- Android 13+ predictive back: register `OnBackPressedCallback` for the editor. The system shows its standard swipe-back animation preview; the `AlertDialog` fires on commit if unsaved changes exist. No custom preview UI is implemented.
+- `BackHandler` is composable-native and integrates with the Android 13+ predictive back system without additional wiring.
+
+---
+
+## Theme: SkrivTheme
+
+`SkrivTheme.kt` wraps the entire `NavHost`. Individual screens do not set their own theme.
+
+```kotlin
+@Composable
+fun SkrivTheme(
+    darkTheme: Boolean,
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val context = LocalContext.current
+        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else {
+        if (darkTheme) darkColorScheme() else lightColorScheme()
+    }
+    MaterialTheme(colorScheme = colorScheme, content = content)
+}
+```
+
+In `MainActivity`, resolve `darkTheme` from the user's `dark_mode` preference before calling `SkrivTheme`:
+
+```kotlin
+val darkTheme = when (userPrefs.darkMode) {
+    "dark"  -> true
+    "light" -> false
+    else    -> isSystemInDarkTheme()
+}
+SkrivTheme(darkTheme = darkTheme) {
+    SkrivNavGraph(navController = rememberNavController(), ...)
+}
+```
+
+Dynamic color (`dynamicLightColorScheme` / `dynamicDarkColorScheme`) is available on API 31+ and derives colors from the user's wallpaper automatically. On API 29–30, `darkColorScheme()` / `lightColorScheme()` with neutral defaults is used as a fallback.
 
 ---
 
@@ -140,7 +272,7 @@ interface RecentFileDao {
 
 ### User preferences: DataStore
 
-Use Jetpack DataStore (Proto or Preferences) for all user settings. Key names:
+Use Jetpack DataStore (Preferences) for all user settings. Key names:
 
 | Key | Type | Default |
 |---|---|---|
@@ -171,13 +303,30 @@ data class DocumentState(
 
 Current editing content lives in `viewModel.textFieldState` (a `TextFieldState`), not in `DocumentState`. The ViewModel tracks a private `lastSavedContent: String`; `isSaved` is recomputed whenever `textFieldState.text` changes by comparing against that value.
 
+### User preferences data class: `UserPrefsData`
+
+```kotlin
+data class UserPrefsData(
+    val fontMonospace: Boolean = true,
+    val fontSizeSp: Int = 16,
+    val lineSpacing: String = "normal",
+    val readingMarginDp: Int = 24,
+    val wordWrap: Boolean = true,
+    val darkMode: String = "system",
+    val defaultExtension: String = "txt",
+    val autoHideToolbar: Boolean = true,
+    val lineNumbers: Boolean = false,
+    val wordCountVisible: Boolean = false
+)
+```
+
+`UserPreferences` wraps DataStore and exposes `val data: Flow<UserPrefsData>` plus individual `suspend fun set*()` mutators.
+
 ---
 
 ## EditorViewModel
 
 `EditorViewModel` holds all editor state. Inject `FileRepository`, `RecentsRepository`, and `UserPreferences`.
-
-Key responsibilities:
 
 ```kotlin
 class EditorViewModel(
@@ -190,15 +339,21 @@ class EditorViewModel(
 
     // Owns current text content and full undo/redo history.
     // Use textFieldState.text.toString() when the raw string is needed (save, print).
-    val textFieldState: TextFieldState
+    val textFieldState: TextFieldState = TextFieldState()
 
     val findBarState: StateFlow<FindBarState>
     val userPreferences: StateFlow<UserPrefsData>
+
+    // Expose createDocumentRequest as SharedFlow; EditorScreen collects and launches picker.
+    val createDocumentRequest: SharedFlow<String>  // suggested filename
 
     // Called on launch with URI from intent or recents.
     // Populates textFieldState and clears undo history so the user
     // cannot undo past the point of file load.
     fun loadFile(uri: Uri, contentResolver: ContentResolver)
+
+    // Called when EditorScreen receives a URI from the create-document picker
+    fun onCreateDocumentResult(uri: Uri, contentResolver: ContentResolver)
 
     // Undo/redo delegate to the platform; no snapshot stack needed.
     fun undo() = textFieldState.undoState.undo()
@@ -206,11 +361,8 @@ class EditorViewModel(
     val canUndo: Boolean get() = textFieldState.undoState.canUndo
     val canRedo: Boolean get() = textFieldState.undoState.canRedo
 
-    // Save to original URI
+    // Save to original URI; emits createDocumentRequest if uri is null
     fun save(contentResolver: ContentResolver)
-
-    // Save As: fires ACTION_CREATE_DOCUMENT result handling
-    fun saveAs(uri: Uri, contentResolver: ContentResolver)
 
     // New document
     fun newDocument()
@@ -241,7 +393,7 @@ class EditorViewModel(
 class FileRepository(private val context: Context) {
 
     // Read file content as UTF-8 string.
-    // Detects and strips UTF-8 BOM (﻿); sets hadBom = true in the returned pair.
+    // Detects and strips UTF-8 BOM; sets hadBom = true in the returned pair.
     suspend fun readFile(uri: Uri): Result<Pair<String, Boolean>>  // content, hadBom
 
     // Write string to URI in truncate mode, UTF-8.
@@ -263,10 +415,46 @@ class FileRepository(private val context: Context) {
 ```
 
 Implementation notes:
-- `readFile`: use `contentResolver.openInputStream(uri)`, read fully, decode as UTF-8. Check for BOM (`﻿`) at the start; strip it from the returned content and return `hadBom = true`. Return `Result.failure` with a descriptive exception on any error.
-- `writeFile`: use `contentResolver.openOutputStream(uri, "wt")` (truncate mode). If `hadBom` is true, prepend `﻿` before writing. Encode as UTF-8. Files without a BOM are written without one.
-- `persistPermission`: call `context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)`. Wrap in try/catch; log but do not crash if the permission cannot be persisted.
+- `readFile`: use `contentResolver.openInputStream(uri)`, read fully, decode as UTF-8. Check for BOM (`﻿`) at the start; strip it and return `hadBom = true`. Return `Result.failure` with a descriptive exception on any error.
+- `writeFile`: use `contentResolver.openOutputStream(uri, "wt")` (truncate mode). If `hadBom` is true, prepend `﻿` before writing. Files without a BOM are written without one.
+- `persistPermission`: call `context.contentResolver.takePersistableUriPermission(uri, FLAG_GRANT_READ_URI_PERMISSION or FLAG_GRANT_WRITE_URI_PERMISSION)`. Wrap in try/catch; log but do not crash if the permission cannot be persisted.
 - `hasWritePermission`: check `context.contentResolver.persistedUriPermissions` for a matching URI with write flag.
+
+---
+
+## File picker launchers
+
+Use `rememberLauncherForActivityResult` with typed contracts. Never call `startActivityForResult` directly.
+
+**Opening a file** (in `RecentsScreen` and editor overflow menu):
+
+```kotlin
+val openLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.OpenDocument()
+) { uri ->
+    uri?.let { viewModel.loadFile(it, context.contentResolver) }
+}
+// Launch:
+openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
+```
+
+**Saving a new document** — the ViewModel cannot hold a launcher directly. Use a `SharedFlow` signal:
+
+```kotlin
+// In EditorScreen
+val createLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.CreateDocument("text/plain")
+) { uri ->
+    uri?.let { viewModel.onCreateDocumentResult(it, context.contentResolver) }
+}
+LaunchedEffect(Unit) {
+    viewModel.createDocumentRequest.collect { suggestedFilename ->
+        createLauncher.launch(suggestedFilename)
+    }
+}
+```
+
+When the user taps Save on a new document, the ViewModel emits `createDocumentRequest`. The screen collects it, launches the picker, and returns the chosen URI via `onCreateDocumentResult`.
 
 ---
 
@@ -298,6 +486,23 @@ Implementation notes:
 - Line numbers gutter: a `Column` aligned left, driven by the **same `scrollState` instance** as the `BasicTextField`. The gutter scrolls in lockstep with the text field. Visible only when `lineNumbers` preference is true. Width adapts to digit count.
 - Word count bar: a `Text` composable below the text field (above the FindBar), visible only when `wordCountVisible` is true. Shows "Words: 1,234  Characters: 6,789". Updates debounced at 300ms using `snapshotFlow` + `debounce`.
 
+### Reading width and WindowSizeClass
+
+Use `currentWindowAdaptiveInfo().windowSizeClass` from `androidx.window` to determine the active window size class. Apply it to the reading margin:
+
+```kotlin
+val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+val effectiveMarginDp = when {
+    windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.EXPANDED ->
+        maxOf(userPrefs.readingMarginDp, 48)  // enforce minimum wide margin on tablets
+    windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.MEDIUM ->
+        maxOf(userPrefs.readingMarginDp, 32)
+    else -> userPrefs.readingMarginDp
+}
+```
+
+This replaces any orientation-check heuristics. `WindowWidthSizeClass.EXPANDED` covers tablets and landscape phones; `MEDIUM` covers unfolded foldables and some landscape phones.
+
 ---
 
 ## RecentsScreen layout
@@ -325,8 +530,8 @@ Implementation notes:
 - Tapping a row navigates to `EditorScreen` with that URI.
 - Unavailable files (permission expired) shown with greyed text and a warning icon. Tapping shows a snackbar: "File unavailable. Swipe to remove."
 - Swipe-to-dismiss uses `SwipeToDismissBox` from Material 3.
-- "Open" button fires `ACTION_OPEN_DOCUMENT` launcher.
-- "New" button calls `viewModel.newDocument()` and navigates to `EditorScreen` with null URI.
+- "Open" button fires the `openLauncher` (see File picker launchers).
+- "New" button calls `viewModel.newDocument()` and navigates to `EditorScreen(uriString = null)`.
 
 ---
 
@@ -395,7 +600,7 @@ Standard `LazyColumn` of settings items using Material 3 `ListItem`. Sections se
 </activity>
 ```
 
-In `MainActivity.onCreate`, check `intent.action == Intent.ACTION_VIEW || ACTION_EDIT`. If so, extract the URI, call `persistPermission(uri)` immediately, then navigate to `RecentsScreen` and immediately forward-navigate to `EditorScreen` with the URI, so that RecentsScreen is always in the back stack.
+In `MainActivity.onCreate`, check `intent.action == Intent.ACTION_VIEW || ACTION_EDIT`. If so, extract the URI, call `persistPermission(uri)` immediately, then navigate to `RecentsRoute` and immediately forward-navigate to `EditorRoute(uri.toString())`, so that `RecentsScreen` is always in the back stack.
 
 ### App icon
 
@@ -433,7 +638,7 @@ Highlight matches using `OutputTransformation` on `BasicTextField`. In `EditorSc
 | Encoding error on open | `AlertDialog`: "This file cannot be opened. It does not appear to be a UTF-8 text file." Single "OK" button. Navigate back to recents. |
 | File too large (>5MB) | `AlertDialog`: "This file is too large to edit (over 5MB). Skriv is designed for text files." Single "OK" button. |
 | Recent file unavailable | Row shown greyed with warning icon. Snackbar on tap. Swipe to remove. |
-| New document back with unsaved changes | `AlertDialog`: "Save changes?". Buttons: "Save", "Discard", "Cancel". |
+| Back with unsaved changes | `AlertDialog`: "Save changes?". Buttons: "Save", "Discard", "Cancel". |
 
 ---
 
@@ -443,16 +648,19 @@ Highlight matches using `OutputTransformation` on `BasicTextField`. In `EditorSc
 User taps save (or checkmark, or back gesture confirms save)
     │
     ├── uri is null (new document)
-    │       └── launch ACTION_CREATE_DOCUMENT
-    │               └── on result: persistPermission(uri)
-    │                             writeFile(uri, textFieldState.text.toString(), hadBom)
-    │                             upsert to recents
-    │                             documentState.isSaved = true
+    │       └── emit createDocumentRequest(suggestedFilename)
+    │               └── EditorScreen launches CreateDocument picker
+    │                   └── onCreateDocumentResult(uri):
+    │                         persistPermission(uri)
+    │                         writeFile(uri, textFieldState.text.toString(), hadBom)
+    │                         upsert to recents
+    │                         lastSavedContent = textFieldState.text.toString()
+    │                         documentState.isSaved = true
     │
     └── uri is not null
             ├── hasWritePermission(uri) == true
             │       └── writeFile(uri, textFieldState.text.toString(), hadBom)
-            │               ├── success: documentState.isSaved = true
+            │               ├── success: lastSavedContent updated; isSaved = true
             │               └── failure: show snackbar with error
             │
             └── hasWritePermission(uri) == false
@@ -467,8 +675,8 @@ User taps save (or checkmark, or back gesture confirms save)
 ```
 User taps Open (in-app menu or recents screen)
     │
-    ├── From in-app menu: launch ACTION_OPEN_DOCUMENT
-    │       flags: FLAG_GRANT_READ_URI_PERMISSION | FLAG_GRANT_WRITE_URI_PERMISSION
+    ├── From in-app menu: launch openLauncher
+    │       (ActivityResultContracts.OpenDocument)
     │       mimeTypes: ["text/plain", "text/markdown", "application/octet-stream"]
     │
     └── On result (uri received):
@@ -527,12 +735,16 @@ When toolbar is collapsed (`scrollBehavior.state.collapsedFraction == 1f`), show
 
 ## Edge-to-edge and insets
 
-In `MainActivity`:
+In `MainActivity.onCreate`:
+
 ```kotlin
-WindowCompat.setDecorFitsSystemWindows(window, false)
+enableEdgeToEdge()  // Activity 1.9+; replaces WindowCompat.setDecorFitsSystemWindows()
 ```
 
+On API 35 (our target SDK), edge-to-edge is enforced by the platform regardless — `enableEdgeToEdge()` ensures consistent behaviour on API 29–34 as well.
+
 Apply insets on all screens:
+
 ```kotlin
 Modifier.windowInsetsPadding(WindowInsets.systemBars)
 ```
@@ -544,9 +756,9 @@ The text field area uses `Modifier.imePadding()` so content is not obscured by t
 ## Haptic feedback
 
 In the floating checkmark button `onClick` when saving:
+
 ```kotlin
 view.performHapticFeedback(HapticFeedbackConstants.CONFIRM) // API 30+
-// Fallback for API 29:
 if (Build.VERSION.SDK_INT < 30) {
     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
 }
@@ -554,39 +766,43 @@ if (Build.VERSION.SDK_INT < 30) {
 
 ---
 
-## Dependencies (gradle)
+## Dependencies
 
 ```kotlin
 dependencies {
-    // Jetpack Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
+    // Jetpack Compose BOM — pins all compose library versions
+    implementation(platform(libs.compose.bom))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
-    // Navigation (2.8+ required for SharedTransitionLayout / shared element support)
-    implementation("androidx.navigation:navigation-compose:2.8.0")
+    // Navigation (2.8+ for type-safe routes and SharedTransitionLayout)
+    implementation(libs.navigation.compose)
 
     // Lifecycle + ViewModel
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
 
-    // Room
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    // Room (ksp, not kapt)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
     // DataStore
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation(libs.datastore.preferences)
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    implementation(libs.coroutines.android)
 
-    // Window insets animation
-    implementation("androidx.core:core-ktx:1.13.1")
+    // Core KTX + Activity (enableEdgeToEdge, rememberLauncherForActivityResult)
+    implementation(libs.core.ktx)
+    implementation(libs.activity.compose)
 
-    // Activity result APIs
-    implementation("androidx.activity:activity-compose:1.9.0")
+    // Window size classes (WindowSizeClass, currentWindowAdaptiveInfo)
+    implementation(libs.window)
+
+    // Serialization for type-safe nav routes
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 ```
 
