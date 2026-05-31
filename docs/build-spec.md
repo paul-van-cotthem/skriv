@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.9*
+*Agent prompt v1.10*
 
 ---
 
@@ -526,9 +526,10 @@ class EditorViewModel(
     fun undo() = textFieldState.undoState.undo()
     fun redo() = textFieldState.undoState.redo()
 
-    fun save()            // emits createDocumentRequest if uri is null
-    fun requestNew()      // checks unsaved state; sets pendingAction = NEW or creates document
-    fun requestBack()     // checks unsaved state; sets pendingAction = BACK or emits NavigateBack
+    fun save()               // emits createDocumentRequest if uri is null
+    fun requestNew()         // checks unsaved state; sets pendingAction = NEW or creates document
+    fun requestBack()        // checks unsaved state; sets pendingAction = BACK or emits NavigateBack
+    fun requestOpen(uri: Uri)// checks unsaved state; sets pendingAction = OPEN or loads directly
     fun confirmPendingAction(save: Boolean)
     // confirmPendingAction behaviour:
     //   save=false → clear textFieldState (if NEW) or emit NavigateBack (if BACK); clear pendingAction
@@ -697,12 +698,18 @@ val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.Ope
 openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
 ```
 
-**EditorScreen** — opens a different file into the same editor instance:
+**EditorScreen** — opens a different file; must check unsaved state first. Add `fun requestOpen(uri: Uri)` to `EditorViewModel` alongside `requestBack()`/`requestNew()`: if `isSaved`, call `loadFile(uri)` directly; otherwise store the URI and set `pendingAction = OPEN` (extend the enum). The `AlertDialog` for `OPEN` is the same Save/Discard/Cancel dialog; `confirmPendingAction(save = true/false)` then loads the pending URI.
+
 ```kotlin
 val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-    uri?.let { viewModel.loadFile(it) }
+    uri?.let { viewModel.requestOpen(it) }  // NOT loadFile — checks unsaved state first
 }
 openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
+```
+
+Update `PendingAction` enum accordingly:
+```kotlin
+enum class PendingAction { BACK, NEW, OPEN }
 ```
 
 **Creating a new document** — use `"text/*"` so both `.txt` and `.md` are valid choices regardless of `defaultExtension`. The suggested filename (including the correct extension from `userPrefs.defaultExtension`) is enough to guide the picker.
@@ -772,6 +779,15 @@ val pendingAction by viewModel.pendingAction.collectAsStateWithLifecycle()
 if (pendingAction != null) { /* AlertDialog with Save / Discard / Cancel */ }
 BackHandler(enabled = !documentState.isSaved) { viewModel.requestBack() }
 ```
+
+**TopAppBar overflow menu `[⋮]` items** (in order):
+1. **New** → `viewModel.requestNew()`
+2. **Open** → `openLauncher.launch(...)`
+3. **Save** → `viewModel.save()` (visible only when `!documentState.isSaved`)
+4. **Find** → `viewModel.openFindBar()`
+5. **Share** → `shareDocument(context, uri, content, displayName)`
+6. **Print** → `printDocument(context, textFieldState, displayName)`
+7. **Settings** → `navController.navigate(SettingsRoute)`
 
 **Text field:** `BasicTextField` with `state = viewModel.textFieldState`, `outputTransformation` from `findBarState`. Padding from `effectiveMarginDp`, `lineHeight` from `lineSpacing`, font from `fontMonospace`.
 
@@ -859,9 +875,30 @@ Acquire ViewModel: `val viewModel: RecentsViewModel = viewModel(factory = Recent
 └─────────────────────────────────────────────┘
 ```
 
-- Tap row → navigate to `EditorRoute(uriString)`.
-- Tap unavailable row → show snackbar directly in `RecentsScreen` via `CoroutineScope` + `SnackbarHostState` (no ViewModel event needed for this case): `scope.launch { snackbarHostState.showSnackbar("File unavailable. Swipe to remove.") }`.
-- Swipe to dismiss → `viewModel.remove(uri)`.
+RecentsScreen also needs a `Scaffold` with `SnackbarHost(snackbarHostState)` so the "File unavailable" snackbar has somewhere to appear.
+
+Use `key = { it.uri }` on the `LazyColumn items(...)` call — `SwipeToDismissBox` requires stable keys to animate correctly when items are removed.
+
+```kotlin
+LazyColumn {
+    items(recentFiles, key = { it.uri }) { file ->
+        SwipeToDismissBox(
+            state = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.EndToStart) {
+                    viewModel.remove(file.uri); true
+                } else false
+            }),
+            backgroundContent = { /* red delete background */ }
+        ) {
+            RecentFileRow(file = file, onClick = {
+                if (file.isAvailable) navController.navigate(EditorRoute(file.uri))
+                else scope.launch { snackbarHostState.showSnackbar("File unavailable. Swipe to remove.") }
+            })
+        }
+    }
+}
+```
+
 - Open → fire `openLauncher`.
 - New → `navController.navigate(EditorRoute(uriString = null))`.
 
