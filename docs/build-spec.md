@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.8*
+*Agent prompt v1.9*
 
 ---
 
@@ -420,7 +420,7 @@ interface RecentFileDao {
 |---|---|---|
 | `font_monospace` | Boolean | true |
 | `font_size_sp` | Int | 16 |
-| `line_spacing` | String | `"normal"` |
+| `line_spacing` | String | `"normal"` — valid values: `"compact"` (1.1em), `"normal"` (1.3em), `"relaxed"` (1.6em), `"double"` (2.0em) |
 | `reading_margin_dp` | Int | 24 |
 | `word_wrap` | Boolean | true |
 | `dark_mode` | String | `"system"` |
@@ -724,6 +724,8 @@ LaunchedEffect(Unit) {
 
 ## EditorScreen layout
 
+Acquire ViewModel: `val viewModel: EditorViewModel = viewModel(factory = EditorViewModelFactory)`
+
 ```
 ┌─────────────────────────────────────────────┐
 │ TopAppBar (auto-hides on scroll up)          │
@@ -824,7 +826,14 @@ Import `LocalLifecycleOwner` from `androidx.lifecycle.compose` (not from `androi
 val lifecycleOwner = LocalLifecycleOwner.current  // import androidx.lifecycle.compose.LocalLifecycleOwner
 DisposableEffect(lifecycleOwner) {
     val observer = LifecycleEventObserver { _, event ->
-        if (event == Lifecycle.Event.ON_PAUSE) viewModel.onBackground()
+        if (event == Lifecycle.Event.ON_PAUSE) {
+            viewModel.onBackground()
+            // save cursor + scroll position alongside auto-save
+            viewModel.saveScrollState(
+                cursorPos = viewModel.textFieldState.selection.start,
+                scrollOffset = scrollState.value
+            )
+        }
     }
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -834,6 +843,8 @@ DisposableEffect(lifecycleOwner) {
 ---
 
 ## RecentsScreen layout
+
+Acquire ViewModel: `val viewModel: RecentsViewModel = viewModel(factory = RecentsViewModelFactory)`
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -857,6 +868,8 @@ DisposableEffect(lifecycleOwner) {
 ---
 
 ## SettingsScreen layout
+
+Acquire ViewModel: `val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory)`
 
 `LazyColumn` of `ListItem` rows, sections separated by `HorizontalDivider`.
 
