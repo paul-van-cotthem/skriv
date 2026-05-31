@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.6*
+*Agent prompt v1.7*
 
 ---
 
@@ -238,12 +238,15 @@ fun SkrivTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
 
 `MainActivity` collects `UserPreferences` inside `setContent` (composable scope). `isSystemInDarkTheme()` is `@Composable` and must be called here.
 
+The `navController` is created inside `setContent` (composable scope). External intent handling must also live inside `setContent` with access to the same `navController`. Use `LaunchedEffect(intent)` so that intent-driven navigation fires after the NavHost has composed:
+
 ```kotlin
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val navController = rememberNavController()
             val userPreferences = remember { UserPreferences(applicationContext) }
             val userPrefs by userPreferences.data.collectAsStateWithLifecycle(UserPrefsData())
             val darkTheme = when (userPrefs.darkMode) {
@@ -251,8 +254,19 @@ class MainActivity : ComponentActivity() {
                 "light" -> false
                 else    -> isSystemInDarkTheme()
             }
+            // Handle ACTION_VIEW / ACTION_EDIT intents (e.g. opened from a file manager)
+            val fileRepository = remember { FileRepository(applicationContext) }
+            LaunchedEffect(intent) {
+                val action = intent?.action
+                if (action == Intent.ACTION_VIEW || action == Intent.ACTION_EDIT) {
+                    intent.data?.let { uri ->
+                        fileRepository.persistPermission(uri)
+                        navController.navigate(EditorRoute(uri.toString()))
+                    }
+                }
+            }
             SkrivTheme(darkTheme = darkTheme) {
-                SkrivNavGraph(navController = rememberNavController())
+                SkrivNavGraph(navController = navController)
             }
         }
     }
@@ -855,18 +869,19 @@ DisposableEffect(lifecycleOwner) {
         <category android:name="android.intent.category.DEFAULT"/>
         <data android:mimeType="text/markdown"/>
     </intent-filter>
+    <!-- application/octet-stream catches SAF documents where the provider assigns a generic MIME.
+         No pathPattern here: SAF content:// URIs don't carry file paths, so pathPattern
+         would never match and only makes this filter confusingly broad. -->
     <intent-filter>
         <action android:name="android.intent.action.VIEW"/>
         <action android:name="android.intent.action.EDIT"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <data android:mimeType="application/octet-stream"/>
-        <data android:pathPattern=".*\\.txt"/>
-        <data android:pathPattern=".*\\.md"/>
     </intent-filter>
 </activity>
 ```
 
-In `MainActivity.onCreate`, on `ACTION_VIEW` or `ACTION_EDIT`: extract URI, call `fileRepository.persistPermission(uri)`, navigate to `RecentsRoute`, immediately forward-navigate to `EditorRoute(uri.toString())`.
+Intent handling is done via `LaunchedEffect(intent)` inside `setContent` — see the `MainActivity` code in the Theme section above.
 
 ### App icon
 
@@ -1009,7 +1024,8 @@ Call from overflow menu "Share" item. Pass `textFieldState.text.toString()` as `
 fun printDocument(context: Context, textFieldState: TextFieldState, displayName: String) {
     val content = textFieldState.text.toString()
     val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-    val htmlContent = "<html><body><pre>${content.escapeHtml()}</pre></body></html>"
+    // android.text.Html.escapeHtml() is the correct API (no escapeHtml extension on String)
+    val htmlContent = "<html><body><pre>${Html.escapeHtml(content)}</pre></body></html>"
     val webView = WebView(context)
     webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
     webView.webViewClient = object : WebViewClient() {
@@ -1045,7 +1061,9 @@ fun printDocument(context: Context, textFieldState: TextFieldState, displayName:
 enableEdgeToEdge()  // in onCreate, before setContent
 ```
 
-All screens: `Modifier.windowInsetsPadding(WindowInsets.systemBars)`. Text field: `Modifier.imePadding()`. Find bar container: `imePadding()`.
+Use `Scaffold`'s `innerPadding` (which already includes `WindowInsets.systemBars`) as the root `Modifier.padding(innerPadding)` on screen content. Do **not** also apply `Modifier.windowInsetsPadding(WindowInsets.systemBars)` — that would double-pad.
+
+For the IME (keyboard), apply `Modifier.imePadding()` to the `Column` that wraps the text field and FindBar (i.e., below the TopAppBar, above nothing). This lets the FindBar slide above the keyboard naturally.
 
 ---
 
