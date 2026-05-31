@@ -161,8 +161,7 @@ Use Jetpack DataStore (Proto or Preferences) for all user settings. Key names:
 data class DocumentState(
     val uri: Uri?,                        // null for new unsaved document
     val displayName: String,              // shown in toolbar
-    val content: String,                  // current text content; source of truth for saves
-    val isSaved: Boolean,                 // false when content differs from last save
+    val isSaved: Boolean,                 // false when editing content differs from last save
     val isReadOnly: Boolean,              // true if URI has no write permission
     val isLoading: Boolean,
     val error: String?,                   // non-null when a save/load error occurred
@@ -170,7 +169,7 @@ data class DocumentState(
 )
 ```
 
-`content` is a plain `String` and is the domain source of truth — it is what gets written to disk and compared for save state. It is distinct from the `TextFieldValue` held in the ViewModel for UI rendering (see EditorViewModel below).
+Current editing content lives in `viewModel.textFieldState` (a `TextFieldState`), not in `DocumentState`. The ViewModel tracks a private `lastSavedContent: String`; `isSaved` is recomputed whenever `textFieldState.text` changes by comparing against that value.
 
 ---
 
@@ -189,20 +188,23 @@ class EditorViewModel(
 
     val documentState: StateFlow<DocumentState>
 
-    // UI state for BasicTextField: carries cursor position, selection, and
-    // AnnotatedString highlight spans for find/replace. Derived from
-    // documentState.content; kept in sync on every edit and find query change.
-    val textFieldValue: StateFlow<TextFieldValue>
+    // Owns current text content and full undo/redo history.
+    // Use textFieldState.text.toString() when the raw string is needed (save, print).
+    val textFieldState: TextFieldState
 
     val findBarState: StateFlow<FindBarState>
     val userPreferences: StateFlow<UserPrefsData>
 
-    // Called on launch with URI from intent or recents
+    // Called on launch with URI from intent or recents.
+    // Populates textFieldState and clears undo history so the user
+    // cannot undo past the point of file load.
     fun loadFile(uri: Uri, contentResolver: ContentResolver)
 
-    // Called when the BasicTextField value changes in the editor
-    // Updates both textFieldValue (UI) and documentState.content (domain)
-    fun onTextFieldValueChanged(value: TextFieldValue)
+    // Undo/redo delegate to the platform; no snapshot stack needed.
+    fun undo() = textFieldState.undoState.undo()
+    fun redo() = textFieldState.undoState.redo()
+    val canUndo: Boolean get() = textFieldState.undoState.canUndo
+    val canRedo: Boolean get() = textFieldState.undoState.canRedo
 
     // Save to original URI
     fun save(contentResolver: ContentResolver)
@@ -229,9 +231,7 @@ class EditorViewModel(
 }
 ```
 
-`isSaved` is `true` on open and flips to `false` on the first `onTextFieldValueChanged` call after a save. It returns to `true` after a successful save.
-
-When find is active, `textFieldValue` is rebuilt with an `AnnotatedString` that applies background spans to all match positions (amber for the current match, a lighter tint for others). When find is closed, `textFieldValue` contains an unstyled `AnnotatedString` derived from `documentState.content`. Recompute on every find query change, debounced at 150ms.
+`isSaved` is computed by observing `textFieldState` via `snapshotFlow { textFieldState.text.toString() }` and comparing against a private `lastSavedContent: String`. It is `true` on file load and after a successful save; `false` whenever the current text differs from that value.
 
 ---
 
@@ -293,7 +293,7 @@ Implementation notes:
 
 - `TopAppBar` uses `TopAppBarScrollBehavior` with `enterAlwaysScrollBehavior()` so it hides on scroll up and reappears on scroll down.
 - When toolbar is hidden, show a floating `FloatingCheckmarkButton` composable: 32x32dp, positioned top-end with 12dp padding, respecting window insets. Grey (`MaterialTheme.colorScheme.outline`) when saved, amber (`Color(0xFFFFA000)`) when unsaved. On tap when amber: call `viewModel.save()`. On tap when grey: show toolbar by resetting scroll behavior state.
-- Text field: `BasicTextField` (not `TextField`) for full control over layout. Driven by `viewModel.textFieldValue` (a `StateFlow<TextFieldValue>`), not a plain string. Apply horizontal padding from `readingMarginDp`. Apply `lineHeight` from `lineSpacing` preference. Font family from `fontMonospace` preference.
+- Text field: `BasicTextField` with `state = viewModel.textFieldState`. Pass `outputTransformation` derived from `findBarState` for find/replace highlight spans (see Find and replace). Apply horizontal padding from `readingMarginDp`, `lineHeight` from `lineSpacing` preference, font family from `fontMonospace` preference.
 - Scrolling: the `BasicTextField` uses `Modifier.verticalScroll(scrollState)` where `scrollState = rememberScrollState()`. Do **not** wrap it in a `LazyColumn`. This is a single non-lazy scrollable, which is correct for files up to 1MB.
 - Line numbers gutter: a `Column` aligned left, driven by the **same `scrollState` instance** as the `BasicTextField`. The gutter scrolls in lockstep with the text field. Visible only when `lineNumbers` preference is true. Width adapts to digit count.
 - Word count bar: a `Text` composable below the text field (above the FindBar), visible only when `wordCountVisible` is true. Shows "Words: 1,234  Characters: 6,789". Updates debounced at 300ms using `snapshotFlow` + `debounce`.
@@ -324,7 +324,7 @@ Implementation notes:
 
 - Tapping a row navigates to `EditorScreen` with that URI.
 - Unavailable files (permission expired) shown with greyed text and a warning icon. Tapping shows a snackbar: "File unavailable. Swipe to remove."
-- Swipe-to-dismiss uses `SwipeToDismiss` from Material 3.
+- Swipe-to-dismiss uses `SwipeToDismissBox` from Material 3.
 - "Open" button fires `ACTION_OPEN_DOCUMENT` launcher.
 - "New" button calls `viewModel.newDocument()` and navigates to `EditorScreen` with null URI.
 
@@ -420,7 +420,7 @@ data class FindBarState(
 
 Find bar appears above the system keyboard. Implement using `imePadding()` on the root layout so the find bar lifts with the keyboard. The find bar is a `Row` pinned to the bottom of the editor area, visible only when `FindBarState.isVisible` is true.
 
-Highlight matches by rebuilding `textFieldValue` in the ViewModel with an `AnnotatedString` that applies background spans: amber (`Color(0xFFFFA000)`) for the current match, a lighter tint (`Color(0x33FFA000)`) for all other matches. Recalculate on every query change, debounced at 150ms. When the find bar is closed, restore `textFieldValue` to an unstyled `AnnotatedString`.
+Highlight matches using `OutputTransformation` on `BasicTextField`. In `EditorScreen`, compute the transformation with `remember(findBarState.query, findBarState.currentMatchIndex, findBarState.caseSensitive)`. Inside the transformation, annotate the raw text with background spans: amber (`Color(0xFFFFA000)`) for the current match, a lighter tint (`Color(0x33FFA000)`) for all other matches. The transformation is purely visual — it never alters `textFieldState.text`. When the find bar is closed, pass `OutputTransformation.None`. Match positions are recomputed in the ViewModel on every query change, debounced at 150ms, and exposed via `findBarState`.
 
 ---
 
@@ -445,13 +445,13 @@ User taps save (or checkmark, or back gesture confirms save)
     ├── uri is null (new document)
     │       └── launch ACTION_CREATE_DOCUMENT
     │               └── on result: persistPermission(uri)
-    │                             writeFile(uri, content, hadBom)
+    │                             writeFile(uri, textFieldState.text.toString(), hadBom)
     │                             upsert to recents
     │                             documentState.isSaved = true
     │
     └── uri is not null
             ├── hasWritePermission(uri) == true
-            │       └── writeFile(uri, content, hadBom)
+            │       └── writeFile(uri, textFieldState.text.toString(), hadBom)
             │               ├── success: documentState.isSaved = true
             │               └── failure: show snackbar with error
             │
@@ -476,8 +476,10 @@ User taps Open (in-app menu or recents screen)
             2. Call readFile(uri) on IO dispatcher
             3. On success:
                    a. Upsert to recents (displayName, lastAccessedAt, isAvailable=true)
-                   b. Set documentState with uri, content, hadBom, isSaved=true
-                   c. Restore cursorPosition and scrollOffset from recents DB
+                   b. Populate textFieldState: textFieldState.edit { replace(0, length, content) }
+                      then call textFieldState.undoState.clearHistory()
+                   c. Set documentState with uri, hadBom, isSaved=true
+                   d. Restore cursorPosition and scrollOffset from recents DB
             4. On failure:
                    a. Show appropriate error dialog (see Error states table)
 ```
@@ -487,7 +489,8 @@ User taps Open (in-app menu or recents screen)
 ## Print implementation
 
 ```kotlin
-fun printDocument(context: Context, content: String, displayName: String) {
+fun printDocument(context: Context, textFieldState: TextFieldState, displayName: String) {
+    val content = textFieldState.text.toString()
     val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
     val htmlContent = "<html><body><pre>${content.escapeHtml()}</pre></body></html>"
     val webView = WebView(context)
@@ -556,13 +559,13 @@ if (Build.VERSION.SDK_INT < 30) {
 ```kotlin
 dependencies {
     // Jetpack Compose BOM
-    implementation(platform("androidx.compose:compose-bom:2024.05.00"))
+    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
 
-    // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    // Navigation (2.8+ required for SharedTransitionLayout / shared element support)
+    implementation("androidx.navigation:navigation-compose:2.8.0")
 
     // Lifecycle + ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
@@ -571,7 +574,7 @@ dependencies {
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
