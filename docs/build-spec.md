@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.5*
+*Agent prompt v1.6*
 
 ---
 
@@ -89,6 +89,7 @@ compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-animation = { group = "androidx.compose.animation", name = "animation" }
+compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
 lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
@@ -175,6 +176,42 @@ LauncherIcon / External Intent
 - `RecentsScreen` is always the start destination.
 - External intents: start at `RecentsScreen`, immediately navigate to `EditorRoute(uri.toString())`.
 - Navigation Compose 2.8+ handles predictive back animations automatically.
+
+### `SkrivNavGraph`
+
+```kotlin
+@Composable
+fun SkrivNavGraph(navController: NavHostController) {
+    NavHost(
+        navController = navController,
+        startDestination = RecentsRoute,
+        enterTransition = { fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.95f) },
+        exitTransition = { fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f) },
+        popEnterTransition = { fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.95f) },
+        popExitTransition = { fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f) }
+    ) {
+        composable<RecentsRoute> {
+            RecentsScreen(navController = navController)
+        }
+        composable<EditorRoute>(
+            enterTransition = { slideInHorizontally(tween(300)) { it } },
+            exitTransition = { slideOutHorizontally(tween(300)) { it } },
+            popEnterTransition = { slideInHorizontally(tween(300)) { -it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { -it } }
+        ) { backStackEntry ->
+            EditorScreen(navController = navController, navBackStackEntry = backStackEntry)
+        }
+        composable<SettingsRoute>(
+            enterTransition = { slideInHorizontally(tween(300)) { it } },
+            exitTransition = { slideOutHorizontally(tween(300)) { -it } },
+            popEnterTransition = { slideInHorizontally(tween(300)) { -it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) {
+            SettingsScreen(navController = navController)
+        }
+    }
+}
+```
 
 ### Back behaviour
 
@@ -394,6 +431,20 @@ data class UserPrefsData(
 ```
 
 `UserPreferences` wraps DataStore and exposes `val data: Flow<UserPrefsData>` plus individual `suspend fun set*()` mutators.
+
+**Important:** DataStore must be a singleton per process. Declare the DataStore via the `preferencesDataStore` top-level delegate (which internally enforces one instance per file name), then access it from `UserPreferences(context)`:
+
+```kotlin
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
+
+class UserPreferences(private val context: Context) {
+    val data: Flow<UserPrefsData> = context.dataStore.data.map { prefs -> /* map to UserPrefsData */ }
+    suspend fun setFontMonospace(v: Boolean) { context.dataStore.edit { it[Keys.FONT_MONOSPACE] = v } }
+    // ... etc.
+}
+```
+
+Multiple `UserPreferences(context)` instances are safe because they all access the same DataStore singleton via `context.dataStore`.
 
 ### `DocumentState`
 
@@ -661,13 +712,23 @@ Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
 }
 ```
 
-Collect events and show the unsaved-changes dialog:
+Trigger initial file load and collect events:
 ```kotlin
+val uriString: String? = navBackStackEntry.toRoute<EditorRoute>().uriString
+LaunchedEffect(uriString) {
+    uriString?.let { viewModel.loadFile(Uri.parse(it)) }
+}
+
 val snackbarHostState = remember { SnackbarHostState() }
 LaunchedEffect(Unit) {
     viewModel.events.collect { event ->
         when (event) {
-            is UiEvent.Snackbar    -> snackbarHostState.showSnackbar(event.message, event.actionLabel)
+            is UiEvent.Snackbar -> {
+                val result = snackbarHostState.showSnackbar(event.message, event.actionLabel)
+                if (result == SnackbarResult.ActionPerformed && event.actionLabel == "Retry") {
+                    viewModel.save()
+                }
+            }
             is UiEvent.ErrorDialog -> { /* show AlertDialog; on dismiss navController.popBackStack() */ }
             UiEvent.NavigateBack   -> navController.popBackStack()
         }
@@ -1018,6 +1079,7 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.window)
     implementation(libs.serialization.json)
+    debugImplementation(libs.compose.ui.tooling)  // required for @Preview rendering in Android Studio
 }
 ```
 
