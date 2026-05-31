@@ -1,5 +1,5 @@
 # Skriv — Android app build specification
-*Agent prompt v1.10*
+*Agent prompt v1.11*
 
 ---
 
@@ -8,6 +8,35 @@
 An Android plain text file editor called **Skriv**. It opens, edits, and saves `.txt` and `.md` files stored anywhere on the Android file system or in cloud storage. It does not store files internally, render Markdown, or require an account. Every file the user edits remains a real file in the real file system.
 
 The app is written in **Kotlin 2.x + Jetpack Compose**. Minimum SDK: **API 29 (Android 10)**. Target SDK: **API 35**. Use **Material 3** components and theming throughout.
+
+---
+
+## How to build this
+
+### Step 0 — Scaffold all files first
+
+Before writing any implementation, create every file in the project structure with only its package declaration (and an empty class/object body where needed). This prevents "unresolved reference" errors during incremental builds.
+
+### Implementation order
+
+Work through these layers in order. Run `./gradlew assembleDebug` after each layer and fix all errors before proceeding to the next. Do not skip ahead.
+
+1. **Gradle + resources** — `settings.gradle.kts`, `libs.versions.toml`, root `build.gradle.kts`, `app/build.gradle.kts`, `AndroidManifest.xml`, `res/values/strings.xml`, `res/values/themes.xml`
+2. **Data layer** — `RecentFileEntity` → `RecentFileDao` → `SkrivDatabase` → `UserPreferences` → `FileRepository` → `RecentsRepository`. After this layer, run `./gradlew assembleDebug` specifically to trigger KSP and generate Room's implementation. Resolve any KSP errors before continuing.
+3. **Models** — `DocumentState`, `UiEvent`, `PendingAction`, `FindBarState`
+4. **ViewModels** — `EditorViewModel`, `RecentsViewModel`, `SettingsViewModel` (with factories)
+5. **Navigation + Theme + MainActivity** — route definitions, `SkrivNavGraph`, `SkrivTheme`, `MainActivity`
+6. **Screens** — `RecentsScreen`, `EditorScreen` + `FindBar`, `SettingsScreen`
+7. **Full build + smoke test** — see checklist at the end of this document
+
+### What not to build
+
+- Do not add any dependency not listed in the Dependencies section.
+- Do not declare `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`, `INTERNET`, or any network permission in the manifest.
+- Do not create test files (`src/test/` or `src/androidTest/`).
+- Do not add Hilt, Koin, or any dependency injection framework.
+- Do not add Firebase, Crashlytics, or any analytics SDK.
+- If a feature is not described in this document, do not build it.
 
 ---
 
@@ -27,6 +56,20 @@ The app is written in **Kotlin 2.x + Jetpack Compose**. Minimum SDK: **API 29 (A
 ### Kotlin version and Compose compiler
 
 Use **Kotlin 2.x**. With Kotlin 2.0+, the Compose compiler is a standalone Gradle plugin — there is no `kotlinCompilerExtensionVersion` and no `composeOptions` block.
+
+`settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "skriv"
+include(":app")
+```
 
 Root `build.gradle.kts`:
 
@@ -52,9 +95,23 @@ plugins {
 }
 
 android {
+    namespace = "com.skriv.app"
     compileSdk = 35
-    defaultConfig { minSdk = 29; targetSdk = 35 }
+    defaultConfig {
+        applicationId = "com.skriv.app"
+        minSdk = 29
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     buildFeatures { compose = true }
+}
+kotlin {
+    jvmToolchain(17)
 }
 ```
 
@@ -582,7 +639,7 @@ class FileRepository(private val context: Context) {
 }
 ```
 
-- `readFile`: `openInputStream(uri)`, decode UTF-8, strip BOM (`﻿`), return `hadBom = true` if present. `Result.failure` on any error.
+- `readFile`: Check file size first using `contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }`. If size > 5 × 1024 × 1024 bytes, return `Result.failure(FileTooLargeException())` before reading any content. Then `openInputStream(uri)`, decode UTF-8, strip BOM (`﻿`), return `hadBom = true` if present. `Result.failure` on any other error.
 - `writeFile`: `openOutputStream(uri, "wt")`, prepend BOM only if `hadBom`. UTF-8.
 - `persistPermission`: `takePersistableUriPermission(READ or WRITE)`. try/catch, log, do not crash.
 - `hasWritePermission`: scan `persistedUriPermissions`.
@@ -951,6 +1008,40 @@ Acquire ViewModel: `val viewModel: SettingsViewModel = viewModel(factory = Setti
 
 Intent handling is done via `LaunchedEffect(intent)` inside `setContent` — see the `MainActivity` code in the Theme section above.
 
+### Required `<activity>` attributes
+
+```xml
+<activity
+    android:name=".MainActivity"
+    android:exported="true"
+    android:theme="@style/Theme.Skriv"
+    android:windowSoftInputMode="adjustNothing">
+```
+
+`android:exported="true"` is required since API 31. `adjustNothing` is required when using `enableEdgeToEdge()` — `adjustResize` and `adjustPan` conflict with Compose inset handling.
+
+### Android resource files
+
+`res/values/strings.xml`:
+```xml
+<resources>
+    <string name="app_name">Skriv</string>
+</resources>
+```
+
+`res/values/themes.xml`:
+```xml
+<resources>
+    <style name="Theme.Skriv" parent="android:Theme.Material3.DayNight.NoActionBar" />
+</resources>
+```
+
+`res/values-night/themes.xml` is not needed — dynamic theming is handled entirely in `SkrivTheme`.
+
+### Adaptive icon
+
+Generate a default placeholder adaptive icon using Android Studio's Image Asset tool (right-click `res` → New → Image Asset). Any placeholder is fine — the final icon is a pre-launch design deliverable.
+
 ### App icon
 
 Placeholder adaptive icon during development. Final icon (plus monochrome variant for Android 13+ themed icons) is a pre-launch design deliverable.
@@ -976,7 +1067,21 @@ data class FindBarState(
 
 ### Highlighting
 
-`OutputTransformation` computed with `remember(findBarState.matchRanges, findBarState.currentMatchIndex)`. Annotate with background spans: amber (`Color(0xFFFFA000)`) for the current match, tint (`Color(0x33FFA000)`) for others. When `isVisible = false`, pass `null` (the parameter is `outputTransformation: OutputTransformation?`; there is no `None` constant). Match positions recomputed in the ViewModel on every query change, debounced at 150ms.
+`OutputTransformation` computed with `remember(findBarState.matchRanges, findBarState.currentMatchIndex)`. Inside `transformOutput(buffer: TextFieldBuffer)`, use `buffer.addStyle(style, start, end)` to apply background spans:
+
+```kotlin
+val transformation = remember(findBarState.matchRanges, findBarState.currentMatchIndex) {
+    if (!findBarState.isVisible || findBarState.matchRanges.isEmpty()) return@remember null
+    OutputTransformation { buffer ->
+        findBarState.matchRanges.forEachIndexed { i, range ->
+            val color = if (i == findBarState.currentMatchIndex) Color(0xFFFFA000) else Color(0x33FFA000)
+            buffer.addStyle(SpanStyle(background = color), range.first, range.last + 1)
+        }
+    }
+}
+```
+
+When `isVisible = false`, pass `outputTransformation = null` — the parameter is nullable; there is no `OutputTransformation.None` constant. Match positions recomputed in the ViewModel on every query change, debounced at 150ms.
 
 ### Replace / Replace All
 
@@ -1185,5 +1290,27 @@ dependencies {
 - Widgets
 - Any network call
 - Any analytics or crash reporting
+- Test files (`src/test/` or `src/androidTest/`)
 
 If a feature is not described in this document, do not build it.
+
+---
+
+## Smoke test checklist
+
+Install on an API 29+ emulator or device and verify each item before considering the build complete:
+
+- [ ] App launches to the recents screen
+- [ ] "Open" launches the system file picker; selecting a `.txt` file opens it in the editor
+- [ ] Typing changes the floating checkmark from grey to amber
+- [ ] Tapping the amber checkmark saves the file (checkmark turns grey)
+- [ ] Back gesture with unsaved changes shows the Save / Discard / Cancel dialog
+- [ ] Recent files list shows the opened file; tapping it reopens it with cursor in the correct position
+- [ ] Swipe to dismiss removes a file from the recents list
+- [ ] Find bar opens; highlights matches; Next/Previous cycle through them; Replace replaces one; Replace All replaces all
+- [ ] Undo and redo work across multiple edits
+- [ ] Settings screen opens from the overflow menu; toggling dark mode takes effect immediately
+- [ ] Word wrap off enables horizontal scrolling; word wrap on constrains text to screen width
+- [ ] Line numbers toggle shows/hides the gutter
+- [ ] App goes to background and returns with file still open and content preserved
+- [ ] Opening a `.txt` file from a file manager (ACTION_VIEW intent) opens it directly in the editor
