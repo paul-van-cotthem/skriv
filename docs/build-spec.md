@@ -7,7 +7,7 @@
 
 An Android plain text file editor called **Skriv**. It opens, edits, and saves `.txt` and `.md` files stored anywhere on the Android file system or in cloud storage. It does not store files internally, render Markdown, or require an account. Every file the user edits remains a real file in the real file system.
 
-The app is written in **Kotlin 2.x + Jetpack Compose**. Minimum SDK: **API 29 (Android 10)**. Target SDK: **API 35**. Use **Material 3** components and theming throughout.
+The app is written in **Kotlin 2.2 + Jetpack Compose**. Minimum SDK: **API 29 (Android 10)**. Target SDK: **API 35**. Use **Material 3** components and theming throughout.
 
 ---
 
@@ -55,7 +55,7 @@ Work through these layers in order. Run `./gradlew assembleDebug` after each lay
 
 ### Kotlin version and Compose compiler
 
-Use **Kotlin 2.x**. With Kotlin 2.0+, the Compose compiler is a standalone Gradle plugin — there is no `kotlinCompilerExtensionVersion` and no `composeOptions` block.
+Use **Kotlin 2.2.x**. With Kotlin 2.0+, the Compose compiler is a standalone Gradle plugin — there is no `kotlinCompilerExtensionVersion` and no `composeOptions` block. The KSP version prefix **must match the Kotlin version exactly** (`ksp = "2.2.0-2.0.2"` for Kotlin 2.2.0) — a mismatch breaks the build.
 
 `settings.gradle.kts`:
 
@@ -119,19 +119,20 @@ kotlin {
 
 ```toml
 [versions]
-kotlin = "2.1.0"
-agp = "8.7.0"
-compose-bom = "2024.09.00"
-navigation = "2.8.0"
-lifecycle = "2.8.7"
-room = "2.6.1"
-datastore = "1.1.1"
-coroutines = "1.9.0"
-core-ktx = "1.15.0"
-activity = "1.9.3"
-window = "1.3.0"
-serialization-json = "1.7.3"
-ksp = "2.1.0-1.0.29"
+kotlin = "2.2.0"
+agp = "8.11.0"
+compose-bom = "2026.05.01"
+navigation = "2.9.0"
+lifecycle = "2.9.0"
+room = "2.7.2"
+datastore = "1.2.1"
+coroutines = "1.10.0"
+core-ktx = "1.17.0"
+activity = "1.10.1"
+window = "1.5.0"
+material3-adaptive = "1.2.0"
+serialization-json = "1.8.1"
+ksp = "2.2.0-2.0.2"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -158,6 +159,7 @@ coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutin
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
 window = { group = "androidx.window", name = "window", version.ref = "window" }
+material3-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive", version.ref = "material3-adaptive" }
 serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization-json" }
 ```
 
@@ -881,11 +883,15 @@ Row(Modifier.weight(1f)) {
 ```kotlin
 val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
 val effectiveMarginDp = when (windowSizeClass.windowWidthSizeClass) {
-    WindowWidthSizeClass.EXPANDED -> maxOf(userPrefs.readingMarginDp, 48)
-    WindowWidthSizeClass.MEDIUM   -> maxOf(userPrefs.readingMarginDp, 32)
-    else                          -> userPrefs.readingMarginDp
+    WindowWidthSizeClass.COMPACT      -> userPrefs.readingMarginDp
+    WindowWidthSizeClass.MEDIUM       -> maxOf(userPrefs.readingMarginDp, 32)
+    WindowWidthSizeClass.EXPANDED     -> maxOf(userPrefs.readingMarginDp, 48)
+    WindowWidthSizeClass.LARGE        -> maxOf(userPrefs.readingMarginDp, 80)
+    WindowWidthSizeClass.EXTRA_LARGE  -> maxOf(userPrefs.readingMarginDp, 120)
+    else                              -> userPrefs.readingMarginDp
 }
 ```
+`LARGE` (1200–1600dp) and `EXTRA_LARGE` (1600dp+) were added in Material3 Adaptive 1.2.0 / WindowManager 1.5.0. The `else` branch handles any future additions without a compile error.
 
 **Word count:** `Text` below the text field, visible when `wordCountVisible`. Debounced 300ms via `snapshotFlow + debounce`.
 
@@ -1271,6 +1277,7 @@ dependencies {
     implementation(libs.core.ktx)
     implementation(libs.activity.compose)
     implementation(libs.window)
+    implementation(libs.material3.adaptive)
     implementation(libs.serialization.json)
     debugImplementation(libs.compose.ui.tooling)  // required for @Preview rendering in Android Studio
 }
