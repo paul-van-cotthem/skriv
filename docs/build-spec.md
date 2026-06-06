@@ -1,0 +1,1380 @@
+# Skriv — Android app build specification
+*Agent prompt v1.11*
+
+---
+
+## What you are building
+
+An Android plain text file editor called **Skriv**. It opens, edits, and saves `.txt` and `.md` files stored anywhere on the Android file system or in cloud storage. It does not store files internally, render Markdown, or require an account. Every file the user edits remains a real file in the real file system.
+
+The app is written in **Kotlin 2.2 + Jetpack Compose**. Minimum SDK: **API 31 (Android 12)**. Target SDK: **API 36**. Use **Material 3** components and dynamic color throughout.
+
+---
+
+## How to build this
+
+### Step 0 — Scaffold all files first
+
+Before writing any implementation, create every file in the project structure with only its package declaration (and an empty class/object body where needed). This prevents "unresolved reference" errors during incremental builds.
+
+### Implementation order
+
+Work through these layers in order. Run `./gradlew assembleDebug` after each layer and fix all errors before proceeding to the next. Do not skip ahead.
+
+1. **Gradle + resources** — `settings.gradle.kts`, `libs.versions.toml`, root `build.gradle.kts`, `app/build.gradle.kts`, `AndroidManifest.xml`, `res/values/strings.xml`, `res/values/themes.xml`
+2. **Data layer** — `RecentFileEntity` → `RecentFileDao` → `SkrivDatabase` → `UserPreferences` → `FileRepository` → `RecentsRepository`. After this layer, run `./gradlew assembleDebug` specifically to trigger KSP and generate Room's implementation. Resolve any KSP errors before continuing.
+3. **Models** — `DocumentState`, `UiEvent`, `PendingAction`, `FindBarState`
+4. **ViewModels** — `EditorViewModel`, `RecentsViewModel`, `SettingsViewModel` (with factories)
+5. **Navigation + Theme + MainActivity** — route definitions, `SkrivNavGraph`, `SkrivTheme`, `MainActivity`
+6. **Screens** — `RecentsScreen`, `EditorScreen` + `FindBar`, `SettingsScreen`
+7. **Full build + smoke test** — see checklist at the end of this document
+
+### What not to build
+
+- Do not add any dependency not listed in the Dependencies section.
+- Do not declare `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`, `INTERNET`, or any network permission in the manifest.
+- Do not create test files (`src/test/` or `src/androidTest/`).
+- Do not add Hilt, Koin, or any dependency injection framework.
+- Do not add Firebase, Crashlytics, or any analytics SDK.
+- If a feature is not described in this document, do not build it.
+
+---
+
+## Hard constraints — never violate these
+
+1. **No broad storage permissions.** Do not declare `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, or `MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` in the manifest. File access is exclusively via Android's Storage Access Framework (SAF) using `content://` URIs.
+2. **No network permissions.** The app never connects to the internet. Do not declare `INTERNET` or any network permission.
+3. **No proprietary file format.** Every document is a `.txt` or `.md` file. Nothing is stored in a private app database except the recents list and user preferences.
+4. **No ads, no analytics, no third-party SDKs** beyond what is listed in the dependencies section below.
+5. **UTF-8 only.** All files are read and written as UTF-8. Never silently substitute or drop characters.
+6. **All file I/O off the main thread.** Use coroutines. Never block the UI thread with file operations.
+
+---
+
+## Gradle and Kotlin configuration
+
+### Kotlin version and Compose compiler
+
+Use **Kotlin 2.2.x**. With Kotlin 2.0+, the Compose compiler is a standalone Gradle plugin — there is no `kotlinCompilerExtensionVersion` and no `composeOptions` block. The KSP version prefix **must match the Kotlin version exactly** (`ksp = "2.2.0-2.0.2"` for Kotlin 2.2.0) — a mismatch breaks the build.
+
+`settings.gradle.kts`:
+
+```kotlin
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = "skriv"
+include(":app")
+```
+
+Root `build.gradle.kts`:
+
+```kotlin
+plugins {
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.kotlin.android) apply false
+    alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.kotlin.serialization) apply false
+    alias(libs.plugins.ksp) apply false
+}
+```
+
+`app/build.gradle.kts`:
+
+```kotlin
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)        // Compose compiler; replaces composeOptions
+    alias(libs.plugins.kotlin.serialization)  // required for @Serializable nav routes
+    alias(libs.plugins.ksp)                   // required for Room
+}
+
+android {
+    namespace = "com.skriv.app"
+    compileSdk = 36
+    defaultConfig {
+        applicationId = "com.skriv.app"
+        minSdk = 31
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    buildFeatures { compose = true }
+}
+kotlin {
+    jvmToolchain(17)
+}
+```
+
+### Gradle Version Catalog (`libs.versions.toml`)
+
+```toml
+[versions]
+kotlin = "2.2.0"
+agp = "8.11.0"
+compose-bom = "2026.05.01"
+navigation = "2.9.0"
+lifecycle = "2.9.0"
+room = "2.7.2"
+datastore = "1.2.1"
+coroutines = "1.10.0"
+core-ktx = "1.17.0"
+activity = "1.10.1"
+window = "1.5.0"
+material3-adaptive = "1.2.0"
+serialization-json = "1.8.1"
+ksp = "2.2.0-2.0.2"
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+
+[libraries]
+compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
+compose-ui = { group = "androidx.compose.ui", name = "ui" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+compose-animation = { group = "androidx.compose.animation", name = "animation" }
+compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation" }
+lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "core-ktx" }
+activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activity" }
+window = { group = "androidx.window", name = "window", version.ref = "window" }
+material3-adaptive = { group = "androidx.compose.material3.adaptive", name = "adaptive", version.ref = "material3-adaptive" }
+serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization-json" }
+```
+
+---
+
+## Project structure
+
+```
+com.skriv.app
+├── MainActivity.kt
+├── navigation/
+│   └── SkrivNavGraph.kt
+├── ui/
+│   ├── theme/
+│   │   └── SkrivTheme.kt
+│   ├── editor/
+│   │   ├── EditorScreen.kt
+│   │   ├── EditorViewModel.kt
+│   │   ├── FindBarState.kt
+│   │   └── FindBar.kt
+│   ├── recents/
+│   │   ├── RecentsScreen.kt
+│   │   └── RecentsViewModel.kt
+│   └── settings/
+│       ├── SettingsScreen.kt
+│       └── SettingsViewModel.kt
+├── data/
+│   ├── db/
+│   │   ├── SkrivDatabase.kt
+│   │   ├── RecentFileDao.kt
+│   │   └── RecentFileEntity.kt
+│   ├── prefs/
+│   │   └── UserPreferences.kt
+│   └── repository/
+│       ├── FileRepository.kt
+│       └── RecentsRepository.kt
+├── model/
+│   ├── DocumentState.kt
+│   ├── UiEvent.kt
+│   └── PendingAction.kt
+└── util/
+    ├── UriPermissionHelper.kt
+    └── EncodingHelper.kt
+```
+
+---
+
+## Screen inventory and navigation
+
+### Type-safe route definitions
+
+```kotlin
+@Serializable object RecentsRoute
+@Serializable data class EditorRoute(val uriString: String?)  // null = new document
+@Serializable object SettingsRoute
+```
+
+Navigate with `navController.navigate(EditorRoute(uri.toString()))`. Retrieve with `navBackStackEntry.toRoute<EditorRoute>()`.
+
+### Navigation graph
+
+```
+LauncherIcon / External Intent
+        │
+        ▼
+  RecentsScreen  ◄──────────────────────────────┐
+        │                                        │
+        │ tap recent / Open picker               │ back
+        ▼                                        │
+  EditorScreen ──── overflow ──────────► SettingsScreen
+```
+
+- `RecentsScreen` is always the start destination.
+- External intents: start at `RecentsScreen`, immediately navigate to `EditorRoute(uri.toString())`.
+- Navigation Compose 2.8+ handles predictive back animations automatically.
+
+### `SkrivNavGraph`
+
+```kotlin
+@Composable
+fun SkrivNavGraph(navController: NavHostController) {
+    NavHost(
+        navController = navController,
+        startDestination = RecentsRoute,
+        enterTransition = { fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.95f) },
+        exitTransition = { fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f) },
+        popEnterTransition = { fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.95f) },
+        popExitTransition = { fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.95f) }
+    ) {
+        composable<RecentsRoute> {
+            RecentsScreen(navController = navController)
+        }
+        composable<EditorRoute>(
+            enterTransition = { slideInHorizontally(tween(300)) { it } },
+            exitTransition = { slideOutHorizontally(tween(300)) { -it } },
+            popEnterTransition = { slideInHorizontally(tween(300)) { -it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) { backStackEntry ->
+            EditorScreen(navController = navController, navBackStackEntry = backStackEntry)
+        }
+        composable<SettingsRoute>(
+            enterTransition = { slideInHorizontally(tween(300)) { it } },
+            exitTransition = { slideOutHorizontally(tween(300)) { -it } },
+            popEnterTransition = { slideInHorizontally(tween(300)) { -it } },
+            popExitTransition = { slideOutHorizontally(tween(300)) { it } }
+        ) {
+            SettingsScreen(navController = navController)
+        }
+    }
+}
+```
+
+### Back behaviour
+
+- No unsaved changes: pop back to `RecentsScreen`.
+- Unsaved changes: `BackHandler(enabled = !documentState.isSaved)` calls `viewModel.requestBack()`, which sets `pendingAction = PendingAction.BACK`. The screen shows the unsaved-changes `AlertDialog` (see Pending actions).
+- From `SettingsScreen`: pop back to `EditorScreen`.
+
+---
+
+## Theme: SkrivTheme
+
+```kotlin
+@Composable
+fun SkrivTheme(darkTheme: Boolean, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val colorScheme = if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    MaterialTheme(colorScheme = colorScheme, content = content)
+}
+```
+
+`MainActivity` collects `UserPreferences` inside `setContent` (composable scope). `isSystemInDarkTheme()` is `@Composable` and must be called here.
+
+The `navController` is created inside `setContent` (composable scope). External intent handling must also live inside `setContent` with access to the same `navController`. Use `LaunchedEffect(intent)` so that intent-driven navigation fires after the NavHost has composed:
+
+```kotlin
+class MainActivity : ComponentActivity() {
+    private val intentFlow = MutableStateFlow<Intent?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        intentFlow.value = intent
+        setContent {
+            val navController = rememberNavController()
+            val userPreferences = remember { UserPreferences(applicationContext) }
+            val userPrefs by userPreferences.data.collectAsStateWithLifecycle(UserPrefsData())
+            val darkTheme = when (userPrefs.darkMode) {
+                "dark"  -> true
+                "light" -> false
+                else    -> isSystemInDarkTheme()
+            }
+            // Handle ACTION_VIEW / ACTION_EDIT intents (e.g. opened from a file manager)
+            val fileRepository = remember { FileRepository(applicationContext) }
+            val currentIntent by intentFlow.collectAsStateWithLifecycle()
+            LaunchedEffect(currentIntent) {
+                currentIntent?.let { intent ->
+                    val action = intent.action
+                    if (action == Intent.ACTION_VIEW || action == Intent.ACTION_EDIT) {
+                        intent.data?.let { uri ->
+                            fileRepository.persistPermission(uri)
+                            navController.navigate(EditorRoute(uri.toString()))
+                            intentFlow.value = null // consume it
+                        }
+                    }
+                }
+            }
+            SkrivTheme(darkTheme = darkTheme) {
+                SkrivNavGraph(navController = navController)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intentFlow.value = intent
+    }
+}
+```
+
+---
+
+## Events and pending actions
+
+### `UiEvent`
+
+One-shot events emitted by ViewModels and consumed by screens via `LaunchedEffect`.
+
+```kotlin
+sealed interface UiEvent {
+    data class Snackbar(val message: String, val actionLabel: String? = null) : UiEvent
+    // ErrorDialog navigates back to recents after the user dismisses it.
+    data class ErrorDialog(val title: String, val message: String) : UiEvent
+    data object NavigateBack : UiEvent
+}
+```
+
+In each screen:
+```kotlin
+val snackbarHostState = remember { SnackbarHostState() }
+LaunchedEffect(Unit) {
+    viewModel.events.collect { event ->
+        when (event) {
+            is UiEvent.Snackbar    -> snackbarHostState.showSnackbar(event.message, event.actionLabel)
+            is UiEvent.ErrorDialog -> { /* show AlertDialog, then navController.popBackStack() */ }
+            UiEvent.NavigateBack   -> navController.popBackStack()
+        }
+    }
+}
+Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { ... }
+```
+
+### `PendingAction`
+
+Controls the unsaved-changes `AlertDialog`, which is shared between the back gesture and the "New" action.
+
+```kotlin
+enum class PendingAction { BACK, NEW }
+```
+
+In `EditorViewModel`:
+```kotlin
+val pendingAction: StateFlow<PendingAction?>
+
+fun requestBack()  // called by BackHandler; sets pendingAction = BACK if unsaved
+fun requestNew()   // called by "New" overflow item; sets pendingAction = NEW if unsaved
+
+// Called by AlertDialog buttons
+fun confirmPendingAction(save: Boolean)  // if save=true, saves then executes action
+fun cancelPendingAction()                // clears pendingAction
+```
+
+In `EditorScreen`, show the dialog when `pendingAction != null`:
+```kotlin
+val pendingAction by viewModel.pendingAction.collectAsStateWithLifecycle()
+if (pendingAction != null) {
+    AlertDialog(
+        title = { Text("Save changes?") },
+        confirmButton = { TextButton({ viewModel.confirmPendingAction(save = true) }) { Text("Save") } },
+        dismissButton = {
+            TextButton({ viewModel.confirmPendingAction(save = false) }) { Text("Discard") }
+            TextButton({ viewModel.cancelPendingAction() }) { Text("Cancel") }
+        },
+        onDismissRequest = { viewModel.cancelPendingAction() }
+    )
+}
+BackHandler(enabled = !documentState.isSaved) { viewModel.requestBack() }
+```
+
+---
+
+## Data model
+
+### Room database: `SkrivDatabase`
+
+```kotlin
+@Database(entities = [RecentFileEntity::class], version = 1, exportSchema = false)
+abstract class SkrivDatabase : RoomDatabase() {
+    abstract fun recentFileDao(): RecentFileDao
+
+    companion object {
+        @Volatile private var INSTANCE: SkrivDatabase? = null
+        fun getInstance(context: Context): SkrivDatabase =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: Room.databaseBuilder(
+                    context.applicationContext, SkrivDatabase::class.java, "skriv.db"
+                ).build().also { INSTANCE = it }
+            }
+    }
+}
+```
+
+### `RecentFileEntity`
+
+```kotlin
+@Entity(tableName = "recent_files")
+data class RecentFileEntity(
+    @PrimaryKey val uri: String,
+    val displayName: String,
+    val lastAccessedAt: Long,
+    val lastModifiedAt: Long?,
+    val cursorPosition: Int,
+    val scrollOffset: Int,
+    val isAvailable: Boolean = true
+)
+```
+
+### `RecentFileDao`
+
+```kotlin
+@Dao
+interface RecentFileDao {
+    @Query("SELECT * FROM recent_files ORDER BY lastAccessedAt DESC LIMIT 20")
+    fun observeAll(): Flow<List<RecentFileEntity>>
+
+    @Query("SELECT * FROM recent_files WHERE uri = :uri LIMIT 1")
+    suspend fun getByUri(uri: String): RecentFileEntity?
+
+    @Upsert
+    suspend fun upsert(file: RecentFileEntity)
+
+    @Query("DELETE FROM recent_files WHERE uri = :uri")
+    suspend fun delete(uri: String)
+
+    @Query("DELETE FROM recent_files")
+    suspend fun deleteAll()
+
+    @Query("SELECT COUNT(*) FROM recent_files")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM recent_files WHERE uri = (SELECT uri FROM recent_files ORDER BY lastAccessedAt ASC LIMIT 1)")
+    suspend fun deleteOldest()
+
+    @Query("UPDATE recent_files SET cursorPosition = :pos, scrollOffset = :offset WHERE uri = :uri")
+    suspend fun updateScrollState(uri: String, pos: Int, offset: Int)
+
+    @Query("UPDATE recent_files SET isAvailable = :available WHERE uri = :uri")
+    suspend fun updateAvailability(uri: String, available: Boolean)
+}
+```
+
+### User preferences
+
+| Key | Type | Default |
+|---|---|---|
+| `font_monospace` | Boolean | false |
+| `font_size_sp` | Int | 15 |
+| `line_spacing` | String | `"normal"` — valid values: `"compact"` (1.1em), `"normal"` (1.3em), `"relaxed"` (1.6em), `"double"` (2.0em) |
+| `reading_margin_dp` | Int | 24 |
+| `word_wrap` | Boolean | true |
+| `dark_mode` | String | `"system"` |
+| `default_extension` | String | `"txt"` |
+| `line_numbers` | Boolean | false |
+| `word_count_visible` | Boolean | true |
+| `auto_save_on_background` | Boolean | false |
+| `open_last_file_on_startup` | Boolean | false |
+
+```kotlin
+data class UserPrefsData(
+    val fontMonospace: Boolean = false,
+    val fontSizeSp: Int = 15,
+    val lineSpacing: String = "normal",
+    val readingMarginDp: Int = 24,
+    val wordWrap: Boolean = true,
+    val darkMode: String = "system",
+    val defaultExtension: String = "txt",
+    val lineNumbers: Boolean = false,
+    val wordCountVisible: Boolean = true,
+    val autoSaveOnBackground: Boolean = false,
+    val openLastFileOnStartup: Boolean = false
+)
+```
+
+`UserPreferences` wraps DataStore and exposes `val data: Flow<UserPrefsData>` plus individual `suspend fun set*()` mutators.
+
+**Important:** DataStore must be a singleton per process. Declare the DataStore via the `preferencesDataStore` top-level delegate (which internally enforces one instance per file name), then access it from `UserPreferences(context)`:
+
+```kotlin
+private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
+
+class UserPreferences(private val context: Context) {
+    val data: Flow<UserPrefsData> = context.dataStore.data.map { prefs -> /* map to UserPrefsData */ }
+    suspend fun setFontMonospace(v: Boolean) { context.dataStore.edit { it[Keys.FONT_MONOSPACE] = v } }
+    // ... etc.
+}
+```
+
+Multiple `UserPreferences(context)` instances are safe because they all access the same DataStore singleton via `context.dataStore`.
+
+### `DocumentState`
+
+```kotlin
+data class DocumentState(
+    val uri: Uri?,
+    val displayName: String,
+    val isSaved: Boolean,
+    val isReadOnly: Boolean,
+    val isLoading: Boolean,
+    val hadBom: Boolean = false
+)
+```
+
+Transient errors (save failures, encoding errors) are emitted as `UiEvent`s, not stored in `DocumentState`. `isReadOnly` is the only persistent error-adjacent state.
+
+---
+
+## EditorViewModel
+
+### Factory
+
+```kotlin
+val EditorViewModelFactory = viewModelFactory {
+    initializer {
+        val context = (this[APPLICATION_KEY] as Application).applicationContext
+        val db = SkrivDatabase.getInstance(context)
+        EditorViewModel(
+            fileRepository = FileRepository(context),
+            recentsRepository = RecentsRepository(db.recentFileDao()),
+            prefs = UserPreferences(context)
+        )
+    }
+}
+```
+
+### Class definition
+
+```kotlin
+class EditorViewModel(
+    private val fileRepository: FileRepository,
+    private val recentsRepository: RecentsRepository,
+    private val prefs: UserPreferences
+) : ViewModel() {
+
+    val documentState: StateFlow<DocumentState>
+    val textFieldState: TextFieldState = TextFieldState()
+    val findBarState: StateFlow<FindBarState>
+    val userPreferences: StateFlow<UserPrefsData>
+    val events: SharedFlow<UiEvent>
+    val pendingAction: StateFlow<PendingAction?>
+    val createDocumentRequest: SharedFlow<String>    // suggested filename
+    val restoredScrollOffset: SharedFlow<Int>        // one-shot: scroll to this offset after file load
+
+    // canUndo/canRedo as StateFlow so Compose recomposes correctly
+    val canUndo: StateFlow<Boolean>  // = snapshotFlow { textFieldState.undoState.canUndo }.stateIn(...)
+    val canRedo: StateFlow<Boolean>  // = snapshotFlow { textFieldState.undoState.canRedo }.stateIn(...)
+
+    // Word count, debounced 300ms
+    val wordCount: StateFlow<Int>  // snapshotFlow { text }.debounce(300).map { count words }.stateIn(...)
+
+    fun loadFile(uri: Uri)
+    fun onCreateDocumentResult(uri: Uri)
+
+    fun undo() = textFieldState.undoState.undo()
+    fun redo() = textFieldState.undoState.redo()
+
+    fun save()               // emits createDocumentRequest if uri is null
+    fun requestSaveAs()      // always emits createDocumentRequest with current filename as suggestion
+    fun onSaveAsResult(uri: Uri) // writes file to new uri, persists permission, updates documentState.uri, records in recents
+    fun requestNew()         // checks unsaved state; sets pendingAction = NEW or creates document
+    fun requestBack()        // checks unsaved state; sets pendingAction = BACK or emits NavigateBack
+    fun requestOpen(uri: Uri)// checks unsaved state; sets pendingAction = OPEN or loads directly
+    fun confirmPendingAction(save: Boolean)
+    // confirmPendingAction behaviour:
+    //   save=false → clear textFieldState (if NEW) or emit NavigateBack (if BACK); clear pendingAction
+    //   save=true, uri != null → save inline; then execute action; clear pendingAction
+    //   save=true, uri == null → store pendingAction in _savedPendingAction; call save()
+    //     → onCreateDocumentResult() completes the save, then checks _savedPendingAction and executes it
+    fun cancelPendingAction()
+
+    // Silent auto-save on background. No-op when uri is null (new unsaved document).
+    // Launches viewModelScope coroutine internally; does not suspend the caller.
+    fun onBackground()
+
+    fun saveScrollState(cursorPos: Int, scrollOffset: Int)
+
+    fun openFindBar()
+    fun onFindQueryChanged(query: String)
+    fun onCaseSensitiveToggled()
+    fun findNext()
+    fun findPrevious()
+    fun replace(replacement: String)
+    fun replaceAll(replacement: String)
+    fun closeFindBar()
+}
+```
+
+`isSaved` is tracked by `snapshotFlow { textFieldState.text.toString() }` compared against a private `lastSavedContent: String`.
+
+`canUndo` and `canRedo` implementation:
+```kotlin
+val canUndo: StateFlow<Boolean> = snapshotFlow { textFieldState.undoState.canUndo }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+val canRedo: StateFlow<Boolean> = snapshotFlow { textFieldState.undoState.canRedo }
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+```
+
+---
+
+## FileRepository
+
+`FileRepository` uses `context.contentResolver` internally. No `ContentResolver` parameter on any method.
+
+```kotlin
+class FileRepository(private val context: Context) {
+    suspend fun readFile(uri: Uri): Result<Pair<String, Boolean>>  // content, hadBom
+    suspend fun writeFile(uri: Uri, content: String, hadBom: Boolean): Result<Unit>
+    fun persistPermission(uri: Uri)
+    fun hasWritePermission(uri: Uri): Boolean
+    fun getDisplayName(uri: Uri): String
+    fun getLastModified(uri: Uri): Long?
+}
+```
+
+- `readFile`: Check file size first using `contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize }`. Note that for virtual files (e.g., Google Drive), `statSize` can return `-1` because the size is not known until the file is downloaded — treat `-1` as unknown and skip the size check. If the size is known (not `-1`) and exceeds 5 × 1024 × 1024 bytes, return `Result.failure(FileTooLargeException())` before reading any content. Then `openInputStream(uri)`, decode UTF-8, strip BOM (`﻿`), return `hadBom = true` if present. `Result.failure` on any other error.
+- `writeFile`: Open file descriptor via `contentResolver.openFileDescriptor(uri, "rw")` and wrap it in a `FileOutputStream`. Manually truncate the file to 0 bytes using `FileOutputStream.channel.truncate(0)` before writing (to ensure any leftover text from longer files is discarded). Then write UTF-8 bytes (prepending the BOM only if `hadBom`).
+  *Note*: Do not use `openOutputStream(uri, "wt")`, as `"wt"` is not universally supported and throws a `FileNotFoundException` on some cloud providers like Google Drive. Do not use `"w"` without manual truncation, as it fails to truncate on Android 10+ and causes file corruption if the new content is smaller.
+- `persistPermission`: `takePersistableUriPermission(READ or WRITE)`. try/catch, log, do not crash. If it throws (e.g., when opened from an external intent that doesn't grant persistable permissions), fall back gracefully — the temporary session-based URI permission is still valid for the current session, so the file can still be viewed and edited. Do not show an error to the user in this case.
+- `hasWritePermission`: scan `persistedUriPermissions`.
+
+---
+
+## RecentsRepository
+
+```kotlin
+class RecentsRepository(private val dao: RecentFileDao) {
+
+    val recentFiles: Flow<List<RecentFileEntity>> = dao.observeAll()
+
+    // Preserves existing cursor/scroll when re-opening a known file.
+    suspend fun recordOpen(uri: Uri, displayName: String, lastModifiedAt: Long?) {
+        val existing = dao.getByUri(uri.toString())
+        if (existing == null && dao.count() >= 20) dao.deleteOldest()
+        dao.upsert(RecentFileEntity(
+            uri = uri.toString(),
+            displayName = displayName,
+            lastAccessedAt = System.currentTimeMillis(),
+            lastModifiedAt = lastModifiedAt,
+            cursorPosition = existing?.cursorPosition ?: 0,
+            scrollOffset = existing?.scrollOffset ?: 0,
+            isAvailable = true
+        ))
+    }
+
+    suspend fun getEntry(uri: Uri): RecentFileEntity? = dao.getByUri(uri.toString())
+
+    suspend fun updateScrollState(uri: Uri, cursorPos: Int, scrollOffset: Int) =
+        dao.updateScrollState(uri.toString(), cursorPos, scrollOffset)
+
+    suspend fun markUnavailable(uri: Uri) = dao.updateAvailability(uri.toString(), false)
+    suspend fun remove(uri: Uri) = dao.delete(uri.toString())
+    suspend fun clearAll() = dao.deleteAll()
+}
+```
+
+---
+
+## RecentsViewModel
+
+```kotlin
+class RecentsViewModel(
+    private val recentsRepository: RecentsRepository
+) : ViewModel() {
+
+    val recentFiles: StateFlow<List<RecentFileEntity>> = recentsRepository.recentFiles
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun remove(uri: String) {
+        viewModelScope.launch { recentsRepository.remove(Uri.parse(uri)) }
+    }
+}
+
+val RecentsViewModelFactory = viewModelFactory {
+    initializer {
+        val context = (this[APPLICATION_KEY] as Application).applicationContext
+        RecentsViewModel(RecentsRepository(SkrivDatabase.getInstance(context).recentFileDao()))
+    }
+}
+```
+
+---
+
+## SettingsViewModel
+
+```kotlin
+class SettingsViewModel(
+    private val prefs: UserPreferences,
+    private val recentsRepository: RecentsRepository
+) : ViewModel() {
+
+    val userPrefs: StateFlow<UserPrefsData> = prefs.data
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), UserPrefsData())
+
+    fun setFontMonospace(v: Boolean)    { viewModelScope.launch { prefs.setFontMonospace(v) } }
+    fun setFontSizeSp(v: Int)           { viewModelScope.launch { prefs.setFontSizeSp(v) } }
+    fun setLineSpacing(v: String)       { viewModelScope.launch { prefs.setLineSpacing(v) } }
+    fun setReadingMarginDp(v: Int)      { viewModelScope.launch { prefs.setReadingMarginDp(v) } }
+    fun setWordWrap(v: Boolean)         { viewModelScope.launch { prefs.setWordWrap(v) } }
+    fun setDarkMode(v: String)          { viewModelScope.launch { prefs.setDarkMode(v) } }
+    fun setDefaultExtension(v: String)  { viewModelScope.launch { prefs.setDefaultExtension(v) } }
+    fun setAutoHideToolbar(v: Boolean)  { viewModelScope.launch { prefs.setAutoHideToolbar(v) } }
+    fun setLineNumbers(v: Boolean)      { viewModelScope.launch { prefs.setLineNumbers(v) } }
+    fun setWordCountVisible(v: Boolean) { viewModelScope.launch { prefs.setWordCountVisible(v) } }
+    fun clearRecentFiles()              { viewModelScope.launch { recentsRepository.clearAll() } }
+}
+
+val SettingsViewModelFactory = viewModelFactory {
+    initializer {
+        val context = (this[APPLICATION_KEY] as Application).applicationContext
+        val db = SkrivDatabase.getInstance(context)
+        SettingsViewModel(
+            prefs = UserPreferences(context),
+            recentsRepository = RecentsRepository(db.recentFileDao())
+        )
+    }
+}
+```
+
+---
+
+## File picker launchers
+
+**RecentsScreen** — opens a file then navigates to the editor:
+```kotlin
+val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    uri?.let { navController.navigate(EditorRoute(it.toString())) }
+}
+// launched from "Open" button
+openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
+```
+
+**EditorScreen** — opens a different file; must check unsaved state first. Add `fun requestOpen(uri: Uri)` to `EditorViewModel` alongside `requestBack()`/`requestNew()`: if `isSaved`, call `loadFile(uri)` directly; otherwise store the URI and set `pendingAction = OPEN` (extend the enum). The `AlertDialog` for `OPEN` is the same Save/Discard/Cancel dialog; `confirmPendingAction(save = true/false)` then loads the pending URI.
+
+```kotlin
+val openLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    uri?.let { viewModel.requestOpen(it) }  // NOT loadFile — checks unsaved state first
+}
+openLauncher.launch(arrayOf("text/plain", "text/markdown", "application/octet-stream"))
+```
+
+Update `PendingAction` enum accordingly:
+```kotlin
+enum class PendingAction { BACK, NEW, OPEN }
+```
+
+**Creating a new document** — use `"text/*"` so both `.txt` and `.md` are valid choices regardless of `defaultExtension`. The suggested filename (including the correct extension from `userPrefs.defaultExtension`) is enough to guide the picker.
+
+```kotlin
+val createLauncher = rememberLauncherForActivityResult(
+    ActivityResultContracts.CreateDocument("text/*")
+) { uri ->
+    uri?.let { viewModel.onCreateDocumentResult(it) }
+}
+LaunchedEffect(Unit) {
+    viewModel.createDocumentRequest.collect { suggestedFilename ->
+        createLauncher.launch(suggestedFilename)
+    }
+}
+```
+
+---
+
+## EditorScreen layout
+
+Acquire ViewModel: `val viewModel: EditorViewModel = viewModel(factory = EditorViewModelFactory)`
+
+```
+┌─────────────────────────────────────────────┐
+│ TopAppBar (auto-hides on scroll up)          │
+│  [filename]  [saved indicator]  [⟲] [⟳] [⋮] │
+├─────────────────────────────────────────────┤
+│                                             │
+│   [line numbers gutter] │ [text field]      │
+│                                             │
+├─────────────────────────────────────────────┤
+│ FindBar (above keyboard, when active)       │
+└─────────────────────────────────────────────┘
+```
+
+Wrap the screen in `Scaffold` with a `SnackbarHost`:
+```kotlin
+Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { innerPadding ->
+    // editor content with innerPadding applied
+}
+```
+
+Trigger initial file load and collect events:
+```kotlin
+val uriString: String? = navBackStackEntry.toRoute<EditorRoute>().uriString
+LaunchedEffect(uriString) {
+    uriString?.let { viewModel.loadFile(Uri.parse(it)) }
+}
+
+val snackbarHostState = remember { SnackbarHostState() }
+LaunchedEffect(Unit) {
+    viewModel.events.collect { event ->
+        when (event) {
+            is UiEvent.Snackbar -> {
+                val result = snackbarHostState.showSnackbar(event.message, event.actionLabel)
+                if (result == SnackbarResult.ActionPerformed && event.actionLabel == "Retry") {
+                    viewModel.save()
+                }
+            }
+            is UiEvent.ErrorDialog -> { /* show AlertDialog; on dismiss navController.popBackStack() */ }
+            UiEvent.NavigateBack   -> navController.popBackStack()
+        }
+    }
+}
+val pendingAction by viewModel.pendingAction.collectAsStateWithLifecycle()
+if (pendingAction != null) { /* AlertDialog with Save / Discard / Cancel */ }
+BackHandler(enabled = !documentState.isSaved) { viewModel.requestBack() }
+```
+
+**TopAppBar overflow menu `[⋮]` items** (in order):
+1. **New** → `viewModel.requestNew()`
+2. **Open** → `openLauncher.launch(...)`
+3. **Save** → `viewModel.save()` (visible only when `!documentState.isSaved`)
+4. **Save As** → `viewModel.requestSaveAs()` (emits `createDocumentRequest` with current filename as suggestion; on result calls `onSaveAsResult(uri)` which writes the file, persists permission, updates `documentState.uri`, and records in recents)
+5. **Find** → `viewModel.openFindBar()`
+6. **Share** → `shareDocument(context, uri, content, displayName)`
+7. **Print** → `printDocument(context, textFieldState, displayName)`
+8. **Settings** → `navController.navigate(SettingsRoute)`
+
+**Text field:** `BasicTextField` with `state = viewModel.textFieldState`, `outputTransformation` from `findBarState`. Padding from `effectiveMarginDp`, `lineHeight` from `lineSpacing`, font from `fontMonospace`.
+
+**Undo/redo buttons:** observe `canUndo` and `canRedo` as state:
+```kotlin
+val canUndo by viewModel.canUndo.collectAsStateWithLifecycle()
+val canRedo by viewModel.canRedo.collectAsStateWithLifecycle()
+```
+
+**Scrolling and word wrap:**
+```kotlin
+val scrollState = rememberScrollState()
+val gutterScrollState = rememberScrollState()
+val horizontalScrollState = if (!userPrefs.wordWrap) rememberScrollState() else null
+
+// ScrollState can only be bound to one container at a time. Sync them instead:
+LaunchedEffect(scrollState.value) {
+    gutterScrollState.scrollTo(scrollState.value)
+}
+
+Row(Modifier.weight(1f)) {
+    if (userPrefs.lineNumbers) LineNumbersGutter(gutterScrollState)  // scrolls in sync via gutterScrollState
+    Box(
+        Modifier.weight(1f).then(
+            if (horizontalScrollState != null) Modifier.horizontalScroll(horizontalScrollState)
+            else Modifier
+        )
+    ) {
+        BasicTextField(
+            state = viewModel.textFieldState,
+            scrollState = scrollState,  // vertical scroll passed as parameter, NOT via Modifier
+            lineLimits = TextFieldLineLimits.MultiLine(),
+            modifier = if (userPrefs.wordWrap) Modifier.fillMaxWidth() else Modifier.wrapContentWidth()
+        )
+    }
+}
+```
+
+**Reading width:**
+```kotlin
+val windowSizeClass = currentWindowAdaptiveInfo().windowSizeClass
+val configuration = LocalConfiguration.current
+val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+val sizeClassMargin = when (windowSizeClass.windowWidthSizeClass) {
+    WindowWidthSizeClass.COMPACT      -> userPrefs.readingMarginDp
+    WindowWidthSizeClass.MEDIUM       -> maxOf(userPrefs.readingMarginDp, 32)
+    WindowWidthSizeClass.EXPANDED     -> maxOf(userPrefs.readingMarginDp, 48)
+    WindowWidthSizeClass.LARGE        -> maxOf(userPrefs.readingMarginDp, 80)
+    WindowWidthSizeClass.EXTRA_LARGE  -> maxOf(userPrefs.readingMarginDp, 120)
+    else                              -> userPrefs.readingMarginDp
+}
+val effectiveMarginDp = if (isLandscape) maxOf(sizeClassMargin, 48) else sizeClassMargin
+```
+`LARGE` (1200–1600dp) and `EXTRA_LARGE` (1600dp+) were added in Material3 Adaptive 1.2.0 / WindowManager 1.5.0. The `else` branch handles any future additions without a compile error. The landscape minimum of 48dp prevents excessively long line lengths on phones rotated to landscape.
+
+**Word count:** `Text` below the text field, visible when `wordCountVisible`. Debounced 300ms via `snapshotFlow + debounce`.
+
+**Floating checkmark:** 32x32dp, top-end, 12dp inset-aware padding. Grey when saved, amber when unsaved. Tap amber → `viewModel.save()`. Tap grey → reset `scrollBehavior` state.
+
+**Lifecycle / auto-save:**
+
+Use `LifecycleEventEffect` from `androidx.lifecycle.compose` (part of the `lifecycle-runtime-compose` dependency) to trigger auto-saving and state recording on pause:
+
+```kotlin
+LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
+    viewModel.onBackground()
+    // save cursor + scroll position alongside auto-save
+    viewModel.saveScrollState(
+        cursorPos = viewModel.textFieldState.selection.start,
+        scrollOffset = scrollState.value
+    )
+}
+```
+
+---
+
+## RecentsScreen layout
+
+Acquire ViewModel: `val viewModel: RecentsViewModel = viewModel(factory = RecentsViewModelFactory)`
+
+```
+┌─────────────────────────────────────────────┐
+│  "Skriv"              [+ New]  [📂 Open]    │
+├─────────────────────────────────────────────┤
+│  LazyColumn of recent files                 │
+│  (greyed + warning icon if unavailable)     │
+│                                             │
+│  Empty state: "No recent files.             │
+│   Tap Open to choose a file."               │
+└─────────────────────────────────────────────┘
+```
+
+RecentsScreen also needs a `Scaffold` with `SnackbarHost(snackbarHostState)` so the "File unavailable" snackbar has somewhere to appear.
+
+Use `key = { it.uri }` on the `LazyColumn items(...)` call.
+
+```kotlin
+LazyColumn {
+    items(recentFiles, key = { it.uri }) { file ->
+        RecentFileRow(file = file, onClick = {
+            if (file.isAvailable) navController.navigate(EditorRoute(file.uri))
+            else scope.launch { snackbarHostState.showSnackbar("File is unavailable (deleted or moved).") }
+        })
+    }
+}
+```
+
+- Open → fire `openLauncher`.
+- New → `navController.navigate(EditorRoute(uriString = null))`.
+
+---
+
+## SettingsScreen layout
+
+Acquire ViewModel: `val viewModel: SettingsViewModel = viewModel(factory = SettingsViewModelFactory)`
+
+`LazyColumn` of `ListItem` rows, sections separated by `HorizontalDivider`.
+
+- **Typography:** font segmented button, font size segmented button, line spacing segmented button, reading width `Slider` (8–64dp, snap at 8/24/48).
+- **Editor:** word wrap `Switch`, line numbers `Switch`, word count `Switch`, auto-hide toolbar `Switch`.
+- **Appearance:** dark mode segmented button (System / Light / Dark).
+- **Files:** default extension segmented button, "Clear all recent files" `TextButton` with `AlertDialog` confirmation.
+
+---
+
+## Intent filters (AndroidManifest.xml)
+
+```xml
+<activity android:name=".MainActivity" ...>
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+    </intent-filter>
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <action android:name="android.intent.action.EDIT"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="content"/>
+        <data android:scheme="file"/>
+        <data android:mimeType="text/plain"/>
+        <data android:mimeType="text/markdown"/>
+        <data android:mimeType="application/octet-stream"/>
+    </intent-filter>
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <action android:name="android.intent.action.EDIT"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="content"/>
+        <data android:scheme="file"/>
+        <data android:host="*"/>
+        <data android:pathPattern=".*\\.txt"/>
+        <data android:pathPattern=".*\\.md"/>
+        <data android:pathPattern=".*\\..*\\.txt"/>
+        <data android:pathPattern=".*\\..*\\.md"/>
+    </intent-filter>
+</activity>
+```
+
+Intent handling is done via `LaunchedEffect(intent)` inside `setContent` — see the `MainActivity` code in the Theme section above.
+
+### Required `<activity>` attributes
+
+```xml
+<activity
+    android:name=".MainActivity"
+    android:exported="true"
+    android:theme="@style/Theme.Skriv"
+    android:windowSoftInputMode="adjustResize">
+```
+
+`android:exported="true"` is required since API 31. `adjustResize` is required so that the IME (keyboard) height is correctly calculated and passed to the window insets, allowing Compose's `Modifier.imePadding()` to work.
+
+### Android resource files
+
+`res/values/strings.xml`:
+```xml
+<resources>
+    <string name="app_name">Skriv</string>
+</resources>
+```
+
+`res/values/themes.xml`:
+```xml
+<resources>
+    <style name="Theme.Skriv" parent="android:Theme.Material3.DayNight.NoActionBar" />
+</resources>
+```
+
+`res/values-night/themes.xml` is not needed — dynamic theming is handled entirely in `SkrivTheme`.
+
+### Adaptive icon
+
+Generate a default placeholder adaptive icon using Android Studio's Image Asset tool (right-click `res` → New → Image Asset). Any placeholder is fine — the final icon is a pre-launch design deliverable.
+
+### App icon
+
+Placeholder adaptive icon during development. Final icon (plus monochrome variant for Android 13+ themed icons) is a pre-launch design deliverable.
+
+---
+
+## Find and replace
+
+### `FindBarState`
+
+```kotlin
+data class FindBarState(
+    val isVisible: Boolean = false,
+    val query: String = "",
+    val replacement: String = "",
+    val matchRanges: List<IntRange> = emptyList(),
+    val currentMatchIndex: Int = 0,
+    val caseSensitive: Boolean = false
+) {
+    val matchCount: Int get() = matchRanges.size
+}
+```
+
+### Highlighting
+
+`OutputTransformation` computed with `remember(findBarState.matchRanges, findBarState.currentMatchIndex, findBarState.isVisible, isDark)`. Inside `transformOutput(buffer: TextFieldBuffer)`, use `buffer.addStyle(style, start, end)` to apply background spans:
+
+```kotlin
+val transformation = remember(findBarState.matchRanges, findBarState.currentMatchIndex, findBarState.isVisible, isDark) {
+    if (!findBarState.isVisible || findBarState.matchRanges.isEmpty()) null
+    else OutputTransformation {
+        findBarState.matchRanges.forEachIndexed { i, range ->
+            val color = if (i == findBarState.currentMatchIndex) {
+                if (isDark) Color(0xFFFFB74D) else Color(0xFFFF9800)
+            } else {
+                if (isDark) Color(0x4D00E5FF) else Color(0x9980DEEA)
+            }
+            addStyle(SpanStyle(background = color), range.first, range.last + 1)
+        }
+    }
+}
+```
+
+When `isVisible = false`, pass `outputTransformation = null` — the parameter is nullable; there is no `OutputTransformation.None` constant. Match positions recomputed in the ViewModel on every query change, debounced at 150ms.
+
+### Replace / Replace All
+
+```kotlin
+fun replace(replacement: String) {
+    val range = findBarState.value.matchRanges
+        .getOrNull(findBarState.value.currentMatchIndex) ?: return
+    textFieldState.edit { replace(range.first, range.last + 1, replacement) }
+    recomputeMatches()
+}
+
+fun replaceAll(replacement: String) {
+    textFieldState.edit {
+        findBarState.value.matchRanges
+            .sortedByDescending { it.first }
+            .forEach { range -> replace(range.first, range.last + 1, replacement) }
+    }
+    recomputeMatches()
+}
+```
+
+Each `edit {}` block is one undoable step.
+
+---
+
+## Error states and UI
+
+| Situation | Response |
+|---|---|
+| Save fails | `UiEvent.Snackbar("Could not save: [reason]", actionLabel = "Retry")` |
+| File opened read-only | `UiEvent.Snackbar("File opened read-only. Use Open from menu to enable editing.")` + `documentState.isReadOnly = true` |
+| Encoding error | `UiEvent.ErrorDialog("Cannot open file", "This file does not appear to be a UTF-8 text file.")` → navigates to recents |
+| File too large (>5MB) | `UiEvent.ErrorDialog("File too large", "This file is over 5MB. Skriv is designed for text files.")` → navigates to recents |
+| Recent file unavailable | Row greyed + warning icon. `UiEvent.Snackbar("File is unavailable (deleted or moved).")` on tap. |
+| Back / New with unsaved changes | `AlertDialog` via `pendingAction` (see Pending actions section) |
+
+---
+
+## Save flow
+
+```
+viewModel.save() called
+    │
+    ├── uri is null
+    │       └── emit createDocumentRequest(suggestedFilename)
+    │           └── launcher returns uri → onCreateDocumentResult(uri):
+    │                 persistPermission(uri)
+    │                 writeFile(uri, textFieldState.text.toString(), hadBom) → success/failure
+    │                 recordOpen(uri, ...)
+    │                 lastSavedContent = content; isSaved = true
+    │
+    └── uri is not null
+            ├── hasWritePermission == true
+            │       └── writeFile(uri, textFieldState.text.toString(), hadBom)
+            │               ├── success: lastSavedContent updated; isSaved = true
+            │               └── failure: UiEvent.Snackbar with "Retry"
+            └── hasWritePermission == false
+                    └── UiEvent.Snackbar("File opened read-only...")
+```
+
+---
+
+## Open flow
+
+```
+openLauncher fires → uri received
+    1. persistPermission(uri)                    ← always first
+    2. readFile(uri) on IO dispatcher
+    3. Success — all steps that touch TextFieldState or DocumentState must run on Main dispatcher
+       (use withContext(Dispatchers.Main) after the IO read):
+       a. recentsRepository.recordOpen(uri, displayName, lastModified)
+          (preserves existing cursor/scroll for known URIs)
+       b. withContext(Dispatchers.Main) {
+              textFieldState.edit { replace(0, length, content) }
+              textFieldState.undoState.clearHistory()
+          }
+       c. documentState updated:
+          - uri, displayName, hadBom
+          - isSaved = true
+          - isReadOnly = !fileRepository.hasWritePermission(uri)
+          - isLoading = false
+       d. val entry = recentsRepository.getEntry(uri)
+          Set cursor: textFieldState.edit { selectCharsIn(TextRange(entry?.cursorPosition ?: 0)) }
+          Scroll: expose restoredScrollOffset as a one-shot SharedFlow<Int> (emitted as entry?.scrollOffset ?: 0); EditorScreen
+          collects it with LaunchedEffect and calls scrollState.scrollTo(offset)
+    4. Failure: UiEvent.ErrorDialog (encoding) or UiEvent.ErrorDialog (too large)
+```
+
+---
+
+## Share implementation
+
+```kotlin
+fun shareDocument(context: Context, uri: Uri?, content: String, displayName: String) {
+    if (uri != null) {
+        val mimeType = context.contentResolver.getType(uri) ?: when {
+            displayName.endsWith(".md", ignoreCase = true) -> "text/markdown"
+            else -> "text/plain"
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, displayName)
+            // ClipData is required on API 21+ for FLAG_GRANT_READ_URI_PERMISSION to propagate
+            // to EXTRA_STREAM — setting the flag alone is not sufficient.
+            clipData = ClipData.newRawUri(null, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share file"))
+    } else {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, content)
+            putExtra(Intent.EXTRA_SUBJECT, displayName)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share text"))
+    }
+}
+```
+
+Call from overflow menu "Share" item. Before sharing, verify if `documentState.uri == null || !documentState.isSaved`. If so, show an `AlertDialog` warning the user and offering to Save the document (or "Save & Share" for existing files to save and then automatically trigger share once the save completes). Otherwise, call `shareDocument` directly with the file parameters.
+
+---
+
+## Print implementation
+
+```kotlin
+// Keep a strong reference to the WebView during the printing process to prevent premature garbage collection.
+// A common approach is to wrap the print adapter and clear the WebView reference inside onFinish().
+fun printDocument(context: Context, textFieldState: TextFieldState, displayName: String) {
+    val content = textFieldState.text.toString()
+    val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+    val htmlContent = "<html><body><pre>${Html.escapeHtml(content)}</pre></body></html>"
+    
+    // Must use UI context (Activity) and hold reference to prevent GC
+    val webView = WebView(context)
+    var printAdapterWrapper: PrintDocumentAdapter? = null
+
+    webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printAdapter = webView.createPrintDocumentAdapter(displayName)
+            printAdapterWrapper = object : PrintDocumentAdapter() {
+                // Keep local reference to webView to prevent GC
+                private val keptWebView = webView
+
+                override fun onStart() = printAdapter.onStart()
+                override fun onLayout(
+                    oldAttributes: PrintAttributes?,
+                    newAttributes: PrintAttributes?,
+                    cancellationSignal: CancellationSignal?,
+                    callback: LayoutResultCallback?,
+                    extras: Bundle?
+                ) = printAdapter.onLayout(oldAttributes, newAttributes, cancellationSignal, callback, extras)
+
+                override fun onWrite(
+                    pages: Array<out PageRange>?,
+                    destination: ParcelFileDescriptor?,
+                    cancellationSignal: CancellationSignal?,
+                    callback: WriteResultCallback?
+                ) = printAdapter.onWrite(pages, destination, cancellationSignal, callback)
+
+                override fun onFinish() {
+                    printAdapter.onFinish()
+                    printAdapterWrapper = null // releases reference
+                }
+            }
+            printManager.print(displayName, printAdapterWrapper!!, PrintAttributes.Builder().build())
+        }
+    }
+}
+```
+
+---
+
+## Toolbar auto-hide
+
+`TopAppBarDefaults.enterAlwaysScrollBehavior()`. Connect via `Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)` on the root layout. Show floating checkmark when `collapsedFraction == 1f`.
+
+---
+
+## Transitions
+
+- `RecentsScreen` → `EditorScreen`: `fadeIn() + scaleIn(initialScale = 0.95f)` enter, `fadeOut() + scaleOut(targetScale = 0.95f)` exit. Configure via `NavHost`'s `enterTransition`, `exitTransition`, `popEnterTransition`, `popExitTransition` parameters.
+- `EditorScreen` → `SettingsScreen`: `slideInHorizontally { it }` enter, `slideOutHorizontally { -it }` exit, reversed on pop.
+- Do **not** use `SharedTransitionLayout`/`sharedElement` — that API is still `@ExperimentalSharedTransitionApi` in Compose Animation 1.7 and requires an `@OptIn` annotation at every call site.
+- Toolbar: `TopAppBarScrollBehavior`, 200ms, `FastOutSlowInEasing`.
+- Find bar: `AnimatedVisibility` + `slideInVertically { it }` from bottom, `slideOutVertically { it }` to bottom.
+
+---
+
+## Edge-to-edge and insets
+
+```kotlin
+enableEdgeToEdge()  // in onCreate, before setContent
+```
+
+Use `Scaffold`'s `innerPadding` (which already includes `WindowInsets.systemBars`) as the root `Modifier.padding(innerPadding)` on screen content. Do **not** also apply `Modifier.windowInsetsPadding(WindowInsets.systemBars)` — that would double-pad.
+
+For the IME (keyboard), apply `Modifier.imePadding()` to the `Column` that wraps the text field and FindBar (i.e., below the TopAppBar, above nothing). This lets the FindBar slide above the keyboard naturally.
+
+---
+
+## Haptic feedback
+
+```kotlin
+val view = LocalView.current
+view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)  // in FloatingCheckmarkButton onClick (import android.view.HapticFeedbackConstants)
+```
+
+---
+
+## Dependencies
+
+```kotlin
+dependencies {
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.animation)
+    implementation(libs.navigation.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
+    implementation(libs.datastore.preferences)
+    implementation(libs.coroutines.android)
+    implementation(libs.core.ktx)
+    implementation(libs.activity.compose)
+    implementation(libs.window)
+    implementation(libs.material3.adaptive)
+    implementation(libs.serialization.json)
+    debugImplementation(libs.compose.ui.tooling)  // required for @Preview rendering in Android Studio
+}
+```
+
+---
+
+## What not to build
+
+- Markdown rendering or preview
+- Folder browser or file tree
+- File management (rename, delete, duplicate)
+- Multiple open files or tabs
+- Syntax highlighting
+- Custom color themes
+- Cloud sync
+- Widgets
+- Any network call
+- Any analytics or crash reporting
+- Test files (`src/test/` or `src/androidTest/`)
+
+If a feature is not described in this document, do not build it.
+
+---
+
+## Smoke test checklist
+
+Install on an API 31+ emulator or device and verify each item before considering the build complete:
+
+- [ ] App launches to the recents screen
+- [ ] "Open" launches the system file picker; selecting a `.txt` file opens it in the editor
+- [ ] Typing changes the floating checkmark from grey to amber
+- [ ] Tapping the amber checkmark saves the file (checkmark turns grey)
+- [ ] Back gesture with unsaved changes shows the Save / Discard / Cancel dialog
+- [ ] Recent files list shows the opened file; tapping it reopens it with cursor in the correct position
+- [ ] Find bar opens; highlights matches; Next/Previous cycle through them; Replace replaces one; Replace All replaces all
+- [ ] Undo and redo work across multiple edits
+- [ ] Settings screen opens from the overflow menu; toggling dark mode takes effect immediately
+- [ ] Word wrap off enables horizontal scrolling; word wrap on constrains text to screen width
+- [ ] Line numbers toggle shows/hides the gutter
+- [ ] App goes to background and returns with file still open and content preserved
+- [ ] Opening a `.txt` file from a file manager (ACTION_VIEW intent) opens it directly in the editor
