@@ -855,6 +855,11 @@
                         <p>Android restricts write permissions when files are opened from system folders (like Downloads or email attachments). You can easily resolve this by saving a writable copy in a safe folder. Read the step-by-step guide in <a href="#saf">Resolving "Read-Only" Restrictions</a>.</p>
                     </div>
                     <div class="ui-list-item">
+                        <strong>Why doesn't OneDrive appear as a destination in "Save As"?</strong>
+                        <p>This is a known limitation of Microsoft's OneDrive Android app, not a Skriv issue. Android's file picker (the Storage Access Framework) can only show cloud providers that have registered support for <em>creating</em> new files. Google Drive does this fully; OneDrive currently only registers as a provider for <em>opening</em> existing files, so it appears when you open a file but not when you save one.</p>
+                        <p>As a workaround, save your file locally first (e.g. to <em>Documents</em> or <em>Downloads</em>), then move or copy it into OneDrive using the OneDrive app. Alternatively, use the <strong>Share</strong> option in Skriv's editor menu (⋮ → Share) to send your file directly to the OneDrive app.</p>
+                    </div>
+                    <div class="ui-list-item">
                         <strong>How can I open or save files to Google Drive, OneDrive, or Dropbox?</strong>
                         <p>Make sure the official app of your cloud provider is installed and logged in on your device. It will automatically register as a storage location in the Android file picker. See the guide in <a href="#saf">Working with Cloud Storage</a>.</p>
                     </div>
