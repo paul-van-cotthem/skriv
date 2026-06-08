@@ -149,6 +149,39 @@
             }
         }
 
+        @media (max-width: 768px) {
+            .hero {
+                padding: 48px 20px 40px 20px;
+            }
+            .hero h1 {
+                font-size: 2.2em;
+            }
+            .hero p {
+                font-size: 1.1em;
+            }
+            .nav-links {
+                display: none;
+            }
+            h2 {
+                font-size: 1.6em;
+            }
+            h3 {
+                font-size: 1.2em;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero h1 {
+                font-size: 1.9em;
+            }
+            .hero p {
+                font-size: 1em;
+            }
+            h2 {
+                font-size: 1.4em;
+            }
+        }
+
         .sidebar {
             position: sticky;
             top: 100px;
@@ -265,6 +298,16 @@
             border-radius: 4px;
             font-size: 0.85em;
             box-shadow: 0 1px 0 rgba(0,0,0,0.1);
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 24px 0;
+        }
+
+        .table-scroll table {
+            margin: 0;
         }
 
         table {
@@ -433,6 +476,77 @@
             background-color: var(--card-bg);
             width: 100%;
         }
+
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            gap: 5px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 6px;
+            transition: background-color 0.2s;
+        }
+
+        .hamburger:hover {
+            background-color: var(--accent-light);
+        }
+
+        .hamburger span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background-color: var(--text-primary);
+            border-radius: 2px;
+            transition: transform 0.25s, opacity 0.25s;
+            transform-origin: center;
+        }
+
+        .hamburger.open span:nth-child(1) {
+            transform: translateY(7px) rotate(45deg);
+        }
+
+        .hamburger.open span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.open span:nth-child(3) {
+            transform: translateY(-7px) rotate(-45deg);
+        }
+
+        .mobile-menu {
+            display: none;
+            flex-direction: column;
+            background-color: var(--card-bg);
+            border-top: 1px solid var(--border-color);
+            padding: 8px 0 16px 0;
+        }
+
+        .mobile-menu.open {
+            display: flex;
+        }
+
+        .mobile-menu a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 1em;
+            padding: 12px 20px;
+            transition: color 0.2s, background-color 0.2s;
+        }
+
+        .mobile-menu a:hover {
+            color: var(--accent-color);
+            background-color: var(--accent-light);
+        }
+
+        @media (max-width: 768px) {
+            .hamburger {
+                display: flex;
+            }
+        }
     </style>
 </head>
 <body>
@@ -450,7 +564,19 @@
                 <a href="#guides">Guides</a>
                 <a href="privacy.html">Privacy Policy</a>
             </nav>
+            <button class="hamburger" id="hamburger" aria-label="Open navigation menu" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
         </div>
+        <nav class="mobile-menu" id="mobile-menu">
+            <a href="#about" class="mobile-nav-link">About</a>
+            <a href="#ui-elements" class="mobile-nav-link">UI Elements</a>
+            <a href="#settings" class="mobile-nav-link">Settings</a>
+            <a href="#guides" class="mobile-nav-link">Guides</a>
+            <a href="privacy.html" class="mobile-nav-link">Privacy Policy</a>
+        </nav>
     </header>
 
     <div class="hero">
@@ -686,6 +812,7 @@
                     </div>
                 </div>
 
+                <div class="table-scroll">
                 <table>
                     <thead>
                         <tr>
@@ -752,6 +879,7 @@
                         </tr>
                     </tbody>
                 </table>
+                </div>
             </section>
 
             <section id="guides">
@@ -908,5 +1036,23 @@
         &copy; 2026 Skriv. Author: Paul Van Cotthem. All rights reserved.
     </footer>
 
+    <script>
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        hamburger.addEventListener('click', () => {
+            const open = mobileMenu.classList.toggle('open');
+            hamburger.classList.toggle('open', open);
+            hamburger.setAttribute('aria-expanded', open);
+        });
+
+        document.querySelectorAll('.mobile-nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.remove('open');
+                hamburger.classList.remove('open');
+                hamburger.setAttribute('aria-expanded', 'false');
+            });
+        });
+    </script>
 </body>
 </html>
