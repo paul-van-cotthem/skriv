@@ -27,13 +27,39 @@ To release a new version of Skriv, the app version must be incremented, a clean 
    * Update the line `val verName = "[version]"` with the target version.
    * Verify that the dynamic `versionCode` calculation correctly updates.
 
-3. **Build the Release App Bundle**:
+3. **Record the release in `CHANGELOG.md`**:
+   * Add a `## [X.Y.Z]` section at the top in Keep a Changelog format (`Added`, `Changed`,
+     `Fixed`, `Removed`, `Security`). Write it for the person using the app.
+   * Get the user-facing wording approved before continuing — this text is also the basis for the
+     Play Store release notes.
+   * `RELEASE_NOTES.md` is a frozen archive for releases up to 1.4.9. Do not add to it.
+
+4. **Verify the version is coherent**:
+   ```bash
+   ./scripts/version-check.sh
+   ```
+   * Confirms `verName` matches the latest CHANGELOG entry, and prints the `versionCode` that
+     will reach Play. A duplicate or lower `versionCode` is rejected at upload, which is slow to
+     diagnose after the fact.
+
+5. **Commit, then tag**:
+   ```bash
+   git add -A && git commit -m "chore(release): vX.Y.Z - short title"
+   ```
+   ```bash
+   ./scripts/version-tag.sh
+   ```
+   * Tag **after** committing. Tagging first points the tag at the previous commit — that bug
+     silently mis-tagged three releases in a sibling project before anyone noticed. The script
+     refuses a dirty tree and refuses to move an existing tag.
+
+6. **Build the Release App Bundle**:
    * Run a clean build using the Gradle wrapper:
      ```bash
      ./gradlew clean bundleRelease
      ```
 
-4. **Provide Links and Deployment Instructions**:
+7. **Provide Links and Deployment Instructions**:
    * Print BOTH the raw absolute path on the user's Mac:
      `/Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build/outputs/bundle/release/app-release.aab`
    * And the clickable link with the full absolute path:
