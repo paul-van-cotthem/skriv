@@ -82,5 +82,4 @@ To release a new version of Skriv, the app version must be incremented, a clean 
 
 ## Related Workflows
 
-* [android-cli](file:///Users/paul/.gemini/config/plugins/android-cli-plugin/skills/SKILL.md) — For other general Android developer command line tools.
-* [verification-before-completion](file:///Users/paul/.gemini/config/skills/verification-before-completion/SKILL.md) — To run standard validation.
+* `superpowers:verification-before-completion` — To run standard validation.
