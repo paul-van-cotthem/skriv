@@ -18,12 +18,12 @@ To release a new version of Skriv, the app version must be incremented, a clean 
 ## The Process
 
 1. **Determine the Target Version**:
-   * Read the current `verName` from [app/build.gradle.kts](file:///Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build.gradle.kts).
+   * Read the current `verName` from `app/build.gradle.kts`.
    * By default, use the current `verName` (since codebase changes coded by the AI assistant will have already incremented it).
    * If a target version name is passed in `$ARGUMENTS` (e.g., `/publish-play-store 1.3.27`), or if you need to manually increment it, use that version.
 
 2. **Update the Gradle Configuration (if version changed)**:
-   * If updating the version, open [app/build.gradle.kts](file:///Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build.gradle.kts).
+   * If updating the version, open `app/build.gradle.kts`.
    * Update the line `val verName = "[version]"` with the target version.
    * Verify that the dynamic `versionCode` calculation correctly updates.
 
@@ -61,23 +61,23 @@ To release a new version of Skriv, the app version must be incremented, a clean 
 
 7. **Provide Links and Deployment Instructions**:
    * Print BOTH the raw absolute path on the user's Mac:
-     `/Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build/outputs/bundle/release/app-release.aab`
+     `app/build/outputs/bundle/release/app-release.aab`
    * And the clickable link with the full absolute path:
-     `[/Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build/outputs/bundle/release/app-release.aab](file:///Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build/outputs/bundle/release/app-release.aab)`
+     `app/build/outputs/bundle/release/app-release.aab`
    * Guide the user to upload this bundle to the [Google Play Console](https://play.google.com/console) under **Testing** > **Internal testing** and update their phone via the Play Store app.
 
 ## Quick Reference
 
 | Action | Command / File | Purpose |
 | --- | --- | --- |
-| Update Version | [app/build.gradle.kts](file:///Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/app/build.gradle.kts) | Sets the version name & code |
+| Update Version | `app/build.gradle.kts` | Sets the version name & code |
 | Build Release | `./gradlew clean bundleRelease` | Cleans and compiles the signed release bundle |
 | Output AAB | `app/build/outputs/bundle/release/app-release.aab` | Output file for Play Store upload |
 
 ## Common Mistakes
 
 * **Skip Clean**: Skipping `./gradlew clean` can sometimes cause stale resources or cache to be included in the release build.
-* **Incorrect Keystore Passwords**: If building fails, ensure that [local.properties](file:///Users/paul/Library/CloudStorage/OneDrive-Personal/Documents/coding/skriv/local.properties) contains correct, unexpired signing keys.
+* **Incorrect Keystore Passwords**: If building fails, ensure that `local.properties` (repo root, gitignored) contains correct, unexpired signing keys.
 * **No Version Bump**: Forgetting to increment the version will cause Google Play Console to reject the upload.
 
 ## Related Workflows
