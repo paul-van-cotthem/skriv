@@ -19,3 +19,6 @@ build_log.txt
 *.keystore
 *.jks
 .claude/settings.local.json
+
+# Session worktrees: a leftover one would be swept into the end-of-day checkpoint commit
+.claude/worktrees/
