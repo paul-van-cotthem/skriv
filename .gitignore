@@ -18,3 +18,4 @@
 build_log.txt
 *.keystore
 *.jks
+.claude/settings.local.json
