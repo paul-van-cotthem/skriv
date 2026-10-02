@@ -70,9 +70,37 @@ Instructions for AI coding assistants working in this repository.
 - When the user requests a task, always comment on it (indicating whether you agree, disagree, have doubts, or think it is a good/bad idea). Do not hesitate to push back or offer alternative options.
 
 
+## Coordination
+
+Several sessions can work on this app at once. One of them, "Skriv Orchestrator", coordinates; every
+other session that touches this repository is a worker, including one started in another repository
+and a skill run from one. `orchestration-plan.md` is the authority and holds the details; this
+section is what every session must know before it starts. The rules and their reasons:
+`~/Code/baseline-app/setup/way-of-working.md`.
+
+- **Read `orchestration-plan.md` first**: your workstream, its locks and the version number to use.
+- **Workers build on their own branch and worktree, and never push `main`.** Hand the orchestrator
+  your commit range; it checks, lands and pushes.
+- **Ask the orchestrator before editing a shared file** listed in the plan, `app/build.gradle.kts`
+  (the version), `CHANGELOG.md` and `RELEASE_NOTES.md` included. It records the lock and names the
+  version number to bump to.
+- **Ask Paul about your own output; send cross-cutting questions to the orchestrator**, and then do
+  not also ask Paul. Every question uses the multiple-choice question tool. Send every answer Paul
+  gives you to the orchestrator in the same turn; it records it.
+- **Show before you ask**, then ask. A device cannot be checked by a session, so hand Paul manual
+  check steps instead.
+- **Only the orchestrator makes cards (chips)**, even when Paul asks a worker directly: send his
+  request to the orchestrator word for word.
+- **Only the orchestrator writes `task.md`, `docs/decisions.md` and the plan.**
+- **Nothing new without approval.** A library, tool or pattern outside the spec's dependency list is
+  proposed to the orchestrator, which asks Paul.
+- **Say where work is in plain words**: "saved to the project on GitHub", not "on `main`".
+- **The orchestrator writes no product code.** It coordinates, reviews and lands.
+
 ## Start here when searching
 
 - **What is open: `task.md` at this root.** Read it before starting work, and correct any claim your own work makes untrue, in the same commit.
+- Coordination: `orchestration-plan.md`. Decisions and their reasons: `docs/decisions.md`.
 - Build specification: `docs/build-spec.md`
 - Product requirements: `docs/prd.md`
 - Android entry point: `app/src/main/java/com/skriv/app/MainActivity.kt`
