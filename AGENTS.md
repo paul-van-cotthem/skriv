@@ -72,6 +72,7 @@ Instructions for AI coding assistants working in this repository.
 
 ## Start here when searching
 
+- **What is open: `task.md` at this root.** Read it before starting work, and correct any claim your own work makes untrue, in the same commit.
 - Build specification: `docs/build-spec.md`
 - Product requirements: `docs/prd.md`
 - Android entry point: `app/src/main/java/com/skriv/app/MainActivity.kt`
