@@ -75,7 +75,7 @@ Status as of 02/10/2026, `main` at `be5fa0b`. Rewrite this line; do not append t
 | Workstream | Owner (session title and short id) | Branch and worktree | Status | Waits on | Next step |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | Coordination | Skriv Orchestrator (this session) | `claude/gracious-zhukovsky-590c95`, worktree `.claude/worktrees/gracious-zhukovsky-590c95` (scaffolding) | Setting up the plan, decision log and `AGENTS.md` section | Nothing | Land the first commit |
-| Recents: remove one entry | not started yet; card posted 02/10/2026 | the worker makes its own branch and worktree | Card posted. Version 1.5.14 reserved for it | Paul starting the card | The worker proposes the interaction to Paul, builds it, hands over a commit range |
+| Recents: remove one entry | "Skriv: remove one entry from Recents" (`local_2b91bb3f`) | `claude/eloquent-poincare-2a0760`, worktree `.claude/worktrees/eloquent-poincare-2a0760` | Building version 1.5.14. Paul answered its design questions | Nothing | The worker sends its commit range |
 | Picker opens in last folder | none | none | Not started. Paul chose the recents item first | The recents item landing, so the two do not collide on the version | See *Open the picker in the last folder* in `task.md` |
 | Recents spacing | none | none | Not started. Touches the same screen as the recents item, so it waits for it | The recents item landing | See *Tighten the spacing of Recents* in `task.md` |
 | Manual responsive design | none | none | Not started | Paul choosing when | See *Manual: fix the responsive design* in `task.md` |
@@ -94,16 +94,16 @@ is archived. Files a worker creates for its own workstream need no lock.
 | File | Why it is shared | Held by |
 | :-- | :-- | :-- |
 | `AGENTS.md`, `orchestration-plan.md`, `task.md`, `docs/decisions.md` | rules, coordination and the open list | orchestrator |
-| `docs/build-spec.md`, `docs/prd.md` | the spec and the product behaviour; every workstream reads them | |
-| `app/build.gradle.kts` (`verName`), `CHANGELOG.md` | every release changes both; two workers bumping at once collide. `RELEASE_NOTES.md` is a frozen archive, not edited (`docs/decisions.md`, 02/10/2026) | |
+| `docs/build-spec.md`, `docs/prd.md` | the spec and the product behaviour; every workstream reads them | Recents section of the build spec only: "Skriv: remove one entry from Recents" (`local_2b91bb3f`), 02/10/2026 |
+| `app/build.gradle.kts` (`verName`), `CHANGELOG.md` | every release changes both; two workers bumping at once collide. `RELEASE_NOTES.md` is a frozen archive, not edited (`docs/decisions.md`, 02/10/2026) | "Skriv: remove one entry from Recents" (`local_2b91bb3f`), 02/10/2026 |
 | `gradle/libs.versions.toml`, root and app Gradle files | the build; one dependency change at a time | |
 | `app/src/main/AndroidManifest.xml` | permissions, intent filters, activity attributes | |
-| `app/src/main/res/values/strings.xml` and `themes.xml` | every string and the theme | |
+| `app/src/main/res/values/strings.xml` and `themes.xml` | every string and the theme | `strings.xml` only: "Skriv: remove one entry from Recents" (`local_2b91bb3f`), 02/10/2026 |
 | Room entities, DAOs and the database class; the DataStore preferences class | persisted state: a change needs a migration or a version | |
 | `docs/index.html`, `docs/privacy.html` | the published manual and privacy page | |
 | `store_screenshots/`, `docs/screenshots/` | listing and manual images | |
 
-**Version numbers.** 1.5.14 is reserved for Recents: remove one entry. The orchestrator names the next version in each brief. The worker bumps
+**Version numbers.** 1.5.14 is held by the Recents: remove one entry worker. The orchestrator names the next version in each brief. The worker bumps
 `verName` to exactly that number and writes its entry in `CHANGELOG.md`.
 Work lands in version order. A coordination-only commit (this plan, `task.md`, the decision log)
 does not bump the version, as the last three commits on `main` show.

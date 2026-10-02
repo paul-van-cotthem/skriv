@@ -7,6 +7,18 @@ says.
 Only the orchestrator writes this file. An entry is never rewritten: a decision that is reversed
 gets a new entry naming the one it replaces, and the old one gains a line saying so.
 
+## 02/10/2026: Removing a Recents entry is a long press with Undo, no swipe
+
+- **Decided:** A long press on a Recents row opens a small "Remove from Recents" menu. The same
+  action sits in TalkBack's actions menu for that row. There is no swipe. Removing an entry shows a
+  "Removed from Recents" message with Undo, and Undo restores the whole row, cursor and scroll
+  position included. That adds one small restore function to the Recents repository.
+- **Why:** A swipe alone has no alternative for TalkBack or switch users, and `AGENTS.md` requires
+  WCAG 2.2 AA. The worker recommended this and Paul took the recommendation.
+- **Source:** Paul, 02/10/2026, with the question tool in session "Skriv: remove one entry from
+  Recents", relayed by that worker and recorded here.
+- **Recorded in:** the orchestrator commit that adds this entry.
+
 ## 02/10/2026: Release notes go in CHANGELOG.md only
 
 - **Decided:** A worker records each release in `CHANGELOG.md` and no longer adds to

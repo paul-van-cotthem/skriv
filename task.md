@@ -21,7 +21,7 @@ referred to by title.
 ## Now
 
 Skriv 1.5.13 is released. Four features and one bug are open. Paul chose *Recents: remove one entry*
-to go first, as version 1.5.14. Its card is posted and waits for him to start it. The other items
+to go first, as version 1.5.14. Its worker is building it. The other items
 wait for that one to land, because they touch the same screen or the same version number.
 
 ## Decisions waiting on Paul
@@ -41,6 +41,13 @@ None.
 - [ ] **Recents: remove one entry** by swipe or long press. Removes the entry, not the file.
   Allowed by the spec as it stands: Settings already clears the whole list, and since 1.5.11 the
   missing-file dialog removes one entry (`RELEASE_NOTES.md`, version 1.5.11).
+- [ ] **Release the saved file permission when an entry leaves Recents.** Skriv asks Android to keep
+  access to each file it opens (`FileRepository.kt`), but nothing ever releases that access, so a
+  removed or cleared entry keeps its saved permission. Android limits how many an app can hold. The
+  Recents list itself is capped, so the leak builds slowly, but I have not measured the limit or
+  checked how the cap interacts with it. Found by the Recents worker on 02/10/2026 and confirmed by a
+  search of the source. Release must wait until the Undo window has passed, or Undo breaks. Not
+  started, and not part of version 1.5.14.
 - [ ] **Open the picker in the last folder.** New and Save As open the file picker in the last
   folder saved to. Decided by Paul on 02/10/2026 (`docs/decisions.md`, *The picker opens in the last
   folder saved to*). The picker's starting folder is only a hint, so check that Google Drive and
@@ -53,7 +60,7 @@ None.
 
 | Work | Where | Started |
 | :-- | :-- | :-- |
-| Recents: remove one entry (version 1.5.14) | card posted, waiting for Paul to start it | 02/10/2026 |
+| Recents: remove one entry (version 1.5.14) | session "Skriv: remove one entry from Recents", branch `claude/eloquent-poincare-2a0760` | 02/10/2026 |
 
 ## Parked on purpose
 
