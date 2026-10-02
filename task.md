@@ -20,22 +20,13 @@ referred to by title.
 
 ## Now
 
-Skriv 1.5.13 is released and nothing is in flight. Four features and one bug are open. The next step
-is Paul choosing which one starts first, and whether the reading-page kit from `baseline-app` is
-installed here.
+Skriv 1.5.13 is released. Four features and one bug are open. Paul chose *Recents: remove one entry*
+to go first, as version 1.5.14. Its card is posted and waits for him to start it. The other items
+wait for that one to land, because they touch the same screen or the same version number.
 
 ## Decisions waiting on Paul
 
-- **Which open item starts first.** The orchestrator makes a card for it, with a version number and
-  manual check steps. Asked in chat on 02/10/2026.
-- **Whether Skriv gets the reading-page kit.** The kit in `baseline-app` builds a hub page and a to
-  do list page. Skriv has no `docs/design/pages/` folder, so none is built here. Asked in chat on
-  02/10/2026.
-- **Which release file a worker updates.** `AGENTS.md` says to document each version bump in
-  `RELEASE_NOTES.md`. The `publish-play-store` skill and the header of `CHANGELOG.md` say
-  `RELEASE_NOTES.md` is a frozen archive up to 1.4.9 and `CHANGELOG.md` is the source of truth. In
-  practice `RELEASE_NOTES.md` has carried every entry since, version 1.5.13 included. Asked in chat
-  on 02/10/2026.
+None.
 
 ## Open
 
@@ -62,7 +53,7 @@ installed here.
 
 | Work | Where | Started |
 | :-- | :-- | :-- |
-| Nothing | | |
+| Recents: remove one entry (version 1.5.14) | card posted, waiting for Paul to start it | 02/10/2026 |
 
 ## Parked on purpose
 
@@ -71,6 +62,9 @@ installed here.
 
 ## Recently closed
 
+- **02/10/2026:** Paul answered three questions. *Recents: remove one entry* goes first. Skriv gets no
+  reading-page kit. Release notes go in `CHANGELOG.md` only. The last two are in `docs/decisions.md`;
+  `AGENTS.md` was changed to match.
 - **02/10/2026:** Paul decided which wishlist items the spec allows. The Markdown preview is dropped,
   and the picker item is narrowed to remembering the last folder. Recorded in `bd26a71`, and in
   `docs/decisions.md` by the orchestrator's first commit.

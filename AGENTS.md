@@ -40,7 +40,7 @@ Instructions for AI coding assistants working in this repository.
 - Follow the implementation order in `docs/build-spec.md`.
 - Scaffold the full project file structure first when starting the Android implementation.
 - Increment the Android app version (`versionCode` and `versionName` in `app/build.gradle.kts`) whenever changes are made to the codebase.
-- Whenever you bump the application version in `app/build.gradle.kts`, document the specific additions, changes, and deletions in `RELEASE_NOTES.md`.
+- Whenever you bump the application version in `app/build.gradle.kts`, document the specific additions, changes, and deletions in `CHANGELOG.md`, in the Keep a Changelog format it already uses. `RELEASE_NOTES.md` is a frozen archive: do not add to it (`docs/decisions.md`, 02/10/2026).
 - Run the real Gradle commands from the project after each implementation layer, especially `./gradlew assembleDebug`.
 - Keep Gradle, Kotlin, Compose compiler, KSP, and Room versions aligned exactly as specified unless explicitly changed.
 - Use Material 3 components and theming throughout.
@@ -82,7 +82,7 @@ section is what every session must know before it starts. The rules and their re
 - **Workers build on their own branch and worktree, and never push `main`.** Hand the orchestrator
   your commit range; it checks, lands and pushes.
 - **Ask the orchestrator before editing a shared file** listed in the plan, `app/build.gradle.kts`
-  (the version), `CHANGELOG.md` and `RELEASE_NOTES.md` included. It records the lock and names the
+  (the version) and `CHANGELOG.md` included. It records the lock and names the
   version number to bump to.
 - **Ask Paul about your own output; send cross-cutting questions to the orchestrator**, and then do
   not also ask Paul. Every question uses the multiple-choice question tool. Send every answer Paul

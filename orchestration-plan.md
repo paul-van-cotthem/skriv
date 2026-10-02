@@ -70,15 +70,15 @@ the spec edit travels in the same commit as the code.
 
 ## Workstreams
 
-Status as of 02/10/2026, `main` at `bd26a71`. Rewrite this line; do not append to it.
+Status as of 02/10/2026, `main` at `be5fa0b`. Rewrite this line; do not append to it.
 
 | Workstream | Owner (session title and short id) | Branch and worktree | Status | Waits on | Next step |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | Coordination | Skriv Orchestrator (this session) | `claude/gracious-zhukovsky-590c95`, worktree `.claude/worktrees/gracious-zhukovsky-590c95` (scaffolding) | Setting up the plan, decision log and `AGENTS.md` section | Nothing | Land the first commit |
-| Recents entry removal | none | none | Not started | Paul choosing what starts | See *Recents: remove one entry* in `task.md` |
-| Picker opens in last folder | none | none | Not started | Paul; touches the spec and stored preferences | See *Open the picker in the last folder* in `task.md` |
-| Recents spacing | none | none | Not started | Paul choosing what starts | See *Tighten the spacing of Recents* in `task.md` |
-| Manual responsive design | none | none | Not started | Paul choosing what starts | See *Manual: fix the responsive design* in `task.md` |
+| Recents: remove one entry | not started yet; card posted 02/10/2026 | the worker makes its own branch and worktree | Card posted. Version 1.5.14 reserved for it | Paul starting the card | The worker proposes the interaction to Paul, builds it, hands over a commit range |
+| Picker opens in last folder | none | none | Not started. Paul chose the recents item first | The recents item landing, so the two do not collide on the version | See *Open the picker in the last folder* in `task.md` |
+| Recents spacing | none | none | Not started. Touches the same screen as the recents item, so it waits for it | The recents item landing | See *Tighten the spacing of Recents* in `task.md` |
+| Manual responsive design | none | none | Not started | Paul choosing when | See *Manual: fix the responsive design* in `task.md` |
 | Black screen after saving | none | none | Not started, not reproduced since 01/09/2026 | A way to reproduce it | See *Black screen after saving* in `task.md` |
 
 There is no other Skriv session, live or archived. The session list for 02/10/2026 shows none whose
@@ -95,7 +95,7 @@ is archived. Files a worker creates for its own workstream need no lock.
 | :-- | :-- | :-- |
 | `AGENTS.md`, `orchestration-plan.md`, `task.md`, `docs/decisions.md` | rules, coordination and the open list | orchestrator |
 | `docs/build-spec.md`, `docs/prd.md` | the spec and the product behaviour; every workstream reads them | |
-| `app/build.gradle.kts` (`verName`), `CHANGELOG.md`, `RELEASE_NOTES.md` | every release changes all three; two workers bumping at once collide | |
+| `app/build.gradle.kts` (`verName`), `CHANGELOG.md` | every release changes both; two workers bumping at once collide. `RELEASE_NOTES.md` is a frozen archive, not edited (`docs/decisions.md`, 02/10/2026) | |
 | `gradle/libs.versions.toml`, root and app Gradle files | the build; one dependency change at a time | |
 | `app/src/main/AndroidManifest.xml` | permissions, intent filters, activity attributes | |
 | `app/src/main/res/values/strings.xml` and `themes.xml` | every string and the theme | |
@@ -103,8 +103,8 @@ is archived. Files a worker creates for its own workstream need no lock.
 | `docs/index.html`, `docs/privacy.html` | the published manual and privacy page | |
 | `store_screenshots/`, `docs/screenshots/` | listing and manual images | |
 
-**Version numbers.** The orchestrator names the next version in each brief. The worker bumps
-`verName` to exactly that number and writes its entries in `CHANGELOG.md` and `RELEASE_NOTES.md`.
+**Version numbers.** 1.5.14 is reserved for Recents: remove one entry. The orchestrator names the next version in each brief. The worker bumps
+`verName` to exactly that number and writes its entry in `CHANGELOG.md`.
 Work lands in version order. A coordination-only commit (this plan, `task.md`, the decision log)
 does not bump the version, as the last three commits on `main` show.
 
@@ -134,8 +134,8 @@ files outright.
 
 None. Skriv has no hub, no to do list page and no reports index. `docs/index.html` is the product
 manual and `docs/privacy.html` the privacy page, both published with the project, not coordination
-pages. The reading-page kit lives in `baseline-app` and is not installed here (see *Waiting on Paul*
-in `task.md`).
+pages. The reading-page kit lives in `baseline-app`. Paul decided on 02/10/2026 not to install it
+here (`docs/decisions.md`, *No reading-page kit for Skriv*).
 
 ## Landing protocol
 
@@ -186,7 +186,7 @@ What the orchestrator needs to pick the job up from this file alone.
 - **Paul's decisions:** record each in `docs/decisions.md`, close its item in `task.md` with a
   pointer, and send it to every live worker if it is a rule.
 - **No hub or to do page exists.** Paul is asked in the chat with the question tool. Add pages only
-  if he installs the kit.
+  if he asks for the kit.
 
 ## Guards to automate later
 

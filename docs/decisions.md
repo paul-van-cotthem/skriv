@@ -7,6 +7,27 @@ says.
 Only the orchestrator writes this file. An entry is never rewritten: a decision that is reversed
 gets a new entry naming the one it replaces, and the old one gains a line saying so.
 
+## 02/10/2026: Release notes go in CHANGELOG.md only
+
+- **Decided:** A worker records each release in `CHANGELOG.md` and no longer adds to
+  `RELEASE_NOTES.md`, which becomes a frozen archive. The `AGENTS.md` line that said otherwise is
+  changed to match.
+- **Why:** `AGENTS.md` told workers to document each bump in `RELEASE_NOTES.md`, while the header of
+  `CHANGELOG.md` and the `publish-play-store` skill call `CHANGELOG.md` the source of truth and
+  `RELEASE_NOTES.md` a frozen archive up to 1.4.9. In practice both were updated up to 1.5.13.
+  Two places drift. Turned down: updating both, which is what `AGENTS.md` said.
+- **Source:** Paul, 02/10/2026, with the question tool in session "Skriv Orchestrator".
+- **Recorded in:** the orchestrator commit that changes `AGENTS.md`.
+
+## 02/10/2026: No reading-page kit for Skriv
+
+- **Decided:** Skriv does not get the hub page and the to do list page from `baseline-app`. Paul is
+  asked in the chat with the question tool.
+- **Why:** Five open items and no other sessions: the pages would be more upkeep than the list they
+  show. Paul can still ask for the kit later.
+- **Source:** Paul, 02/10/2026, with the question tool in session "Skriv Orchestrator".
+- **Recorded in:** the orchestrator commit that adds this entry.
+
 ## 02/10/2026: Skriv gets an orchestrator
 
 - **Decided:** Skriv works to the way of working in `~/Code/baseline-app/setup/way-of-working.md`,
