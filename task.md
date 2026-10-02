@@ -10,11 +10,8 @@ re-checked against the app.
 
 ## Decisions waiting on Paul
 
-### 1. Two wishlist items are ruled out by the spec as it stands
-
-`AGENTS.md` (*Don't*) forbids Markdown preview and file-management features "unless the spec is
-changed", and `docs/build-spec.md` governs. So items 3 and 5 below need a spec change first. Item 2
-may count as file management too. Decide per item: change the spec, or drop the item.
+None. Decision 1 (which wishlist items the spec allows) was settled on 02/10/2026; see
+*Recently closed*.
 
 ## Open
 
@@ -26,14 +23,19 @@ may count as file management too. Decide per item: change the spec, or drop the 
 
 ### Features and polish
 
-- [ ] **2. Delete an entry from the recent files list** by swipe or long press.
-- [ ] **3. Markdown preview.** Blocked by decision 1.
-- [ ] **5. A default Skriv-Files folder** in Documents, proposed for new files unless the last file
-  was saved elsewhere, in which case that folder. Alternative: a setting for the default folder.
-  Blocked by decision 1.
+- [ ] **2. Remove an entry from the recent files list** by swipe or long press. Removes the entry,
+  not the file. Allowed by the spec as it stands: Settings already clears the whole list, and since
+  1.5.11 the missing-file dialog removes one entry.
+- [ ] **5. New and Save As open the file picker in the last folder saved to.** Paul's choice,
+  02/10/2026, over the original Skriv-Files folder in Documents, which would need a folder-access
+  grant and a spec change. The picker's starting folder is only a hint, so check that Google Drive
+  and local storage both honour it.
 - [ ] **6. Tighten the spacing of Recents.**
 - [ ] **7. Fix the responsive design of the manual.**
 
 ## Recently closed
 
-- **02/10/2026:** `Skriv-Wishlist.md` became this file.
+- **02/10/2026, decision 1:** Paul decided. Item 3, Markdown preview, is **dropped**: the build
+  spec says Skriv does not render Markdown, and Share already hands a file to a viewer. Item 5 is
+  narrowed to remembering the last folder, which needs no spec change. Item 2 was never blocked.
+- **02/10/2026:** `Skriv-Wishlist.md` became this file (`5ff6590`, `0837470`).
