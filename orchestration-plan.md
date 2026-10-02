@@ -70,12 +70,12 @@ the spec edit travels in the same commit as the code.
 
 ## Workstreams
 
-Status as of 02/10/2026, `main` at `be5fa0b`. Rewrite this line; do not append to it.
+Status as of 02/10/2026, `main` at `b79f961`. **All work is paused by Paul until he restarts it.** Rewrite this line; do not append to it.
 
 | Workstream | Owner (session title and short id) | Branch and worktree | Status | Waits on | Next step |
 | :-- | :-- | :-- | :-- | :-- | :-- |
 | Coordination | Skriv Orchestrator (this session) | `claude/gracious-zhukovsky-590c95`, worktree `.claude/worktrees/gracious-zhukovsky-590c95` (scaffolding) | Setting up the plan, decision log and `AGENTS.md` section | Nothing | Land the first commit |
-| Recents: remove one entry | "Skriv: remove one entry from Recents" (`local_2b91bb3f`) | `claude/eloquent-poincare-2a0760`, worktree `.claude/worktrees/eloquent-poincare-2a0760` | Building version 1.5.14. Paul answered its design questions | Nothing | The worker sends its commit range |
+| Recents: remove one entry | "Skriv: remove one entry from Recents" (`local_2b91bb3f`) | `claude/eloquent-poincare-2a0760`, worktree `.claude/worktrees/eloquent-poincare-2a0760` | Paused. Code committed as `5b10efa`, never compiled. The branch exists only in that worktree | Paul restarting Skriv, and an Android SDK on this Mac | When restarted: build, fix any compile errors, hand over |
 | Picker opens in last folder | none | none | Not started. Paul chose the recents item first | The recents item landing, so the two do not collide on the version | See *Open the picker in the last folder* in `task.md` |
 | Recents spacing | none | none | Not started. Touches the same screen as the recents item, so it waits for it | The recents item landing | See *Tighten the spacing of Recents* in `task.md` |
 | Manual responsive design | none | none | Not started | Paul choosing when | See *Manual: fix the responsive design* in `task.md` |
@@ -116,7 +116,8 @@ only through the package-update procedure or with Paul's yes.
 
 | Package or tool | Version | State | Needed at | Installed by |
 | :-- | :-- | :-- | :-- | :-- |
-| Nothing pending | | The machine tools a build needs (JDK 17, the Android SDK) have not been inventoried. No code work has started | The first code workstream | The worker, which checks them first and tells the orchestrator |
+| Android SDK, platform 37 | not installed | Missing on this Mac as of 02/10/2026. Found by the Recents worker and confirmed by the orchestrator. Paul paused Skriv instead of choosing how to install it (`task.md`, *Get an Android SDK on this Mac*) | Any build | Not decided; a machine-wide install needs Paul's yes |
+| Java 17 for Gradle | Java 25 is installed | Not checked whether the Gradle and Android plugin versions build with 25 | Any build | The worker that first builds |
 
 ## Technology register
 

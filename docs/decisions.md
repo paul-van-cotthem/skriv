@@ -7,6 +7,16 @@ says.
 Only the orchestrator writes this file. An entry is never rewritten: a decision that is reversed
 gets a new entry naming the one it replaces, and the old one gains a line saying so.
 
+## 02/10/2026: Work on Skriv is paused until Paul restarts it
+
+- **Decided:** All work on Skriv stops now, with no end date. Paul will wake the orchestrator when he
+  wants it to continue.
+- **Why:** This Mac has no Android SDK, so no session can compile Skriv. The Recents worker wrote the
+  code for version 1.5.14 but could not build it. Paul was offered three ways to get an SDK and chose
+  to stop instead. He gave no further reason.
+- **Source:** Paul, 02/10/2026, with the question tool in session "Skriv Orchestrator".
+- **Recorded in:** the orchestrator commit that adds this entry.
+
 ## 02/10/2026: Removing a Recents entry is a long press with Undo, no swipe
 
 - **Decided:** A long press on a Recents row opens a small "Remove from Recents" menu. The same

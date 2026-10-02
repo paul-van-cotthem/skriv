@@ -20,15 +20,27 @@ referred to by title.
 
 ## Now
 
-Skriv 1.5.13 is released. Four features and one bug are open. Paul chose *Recents: remove one entry*
-to go first, as version 1.5.14. Its worker is building it. The other items
-wait for that one to land, because they touch the same screen or the same version number.
+**Work on Skriv is paused** by Paul on 02/10/2026, until he restarts it (`docs/decisions.md`, *Work
+on Skriv is paused until Paul restarts it*). The reason is that this Mac has no Android SDK, so no
+session can build the app. The Recents worker's code for version 1.5.14 is written and committed on
+its own branch, uncompiled and not yet handed over. Nobody starts new work until Paul says.
 
 ## Decisions waiting on Paul
 
 None.
 
 ## Open
+
+### Setup
+
+- [ ] **Get an Android SDK on this Mac.** None is installed: no SDK folder, no `adb`, no
+  `sdkmanager`, and no `local.properties` in the main checkout (checked 02/10/2026). Android Studio
+  is installed but never downloaded an SDK. Skriv compiles against platform 37. The Java on this Mac
+  is version 25 and Skriv targets 17, and I did not check whether Gradle 9.4.1 and the Android
+  plugin 9.2.1 build with it. The options Paul was offered: open Android Studio once and add
+  platform 37 (recommended), have a session install the command-line tools, or build in Android
+  Studio by hand. He paused Skriv instead of choosing. A worker writes its own gitignored
+  `local.properties` with the SDK folder in its worktree.
 
 ### Bugs
 
@@ -60,7 +72,7 @@ None.
 
 | Work | Where | Started |
 | :-- | :-- | :-- |
-| Recents: remove one entry (version 1.5.14) | session "Skriv: remove one entry from Recents", branch `claude/eloquent-poincare-2a0760` | 02/10/2026 |
+| Recents: remove one entry (version 1.5.14). **Paused.** Code committed as `5b10efa`, never compiled, not handed over | session "Skriv: remove one entry from Recents", branch `claude/eloquent-poincare-2a0760`, in its own worktree on this Mac only. The branch is not on GitHub | 02/10/2026 |
 
 ## Parked on purpose
 
